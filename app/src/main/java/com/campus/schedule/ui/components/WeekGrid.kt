@@ -86,7 +86,8 @@ fun WeekGrid(
     onSelectDay: (Long) -> Unit,
     onItemClick: (ScheduleItem) -> Unit,
     modifier: Modifier = Modifier,
-    nowMillis: Long = System.currentTimeMillis()
+    nowMillis: Long = System.currentTimeMillis(),
+    conflictIds: Set<String> = emptySet()
 ) {
     val m = LocalMetrics.current
     val days = remember(weekStart) { CoreDate.weekDays(weekStart) }
@@ -213,6 +214,7 @@ fun WeekGrid(
                                     top = (cellH + gap) * block.row,
                                     height = cellH * block.span + gap * (block.span - 1),
                                     nowMillis = nowMillis,
+                                    conflict = block.item.id in conflictIds,
                                     onClick = { onItemClick(block.item) }
                                 )
                             }
@@ -365,6 +367,7 @@ private fun WeekBlockView(
     top: androidx.compose.ui.unit.Dp,
     height: androidx.compose.ui.unit.Dp,
     nowMillis: Long,
+    conflict: Boolean,
     onClick: () -> Unit
 ) {
     val m = LocalMetrics.current
@@ -374,21 +377,24 @@ private fun WeekBlockView(
     val accent = Tokens.accentColor(block.item.accent)
     val ongoing = block.item.startTime <= nowMillis && block.item.endTime >= nowMillis
 
-    // v2.1 的课块画法：
-    //   * 底色是「该色系 6% 的着色纸」，不是纯白 —— 一行行排下来能看出色条，但仍是纸感；
-    //   * 左侧一条 6rpx 的实色竖条是唯一的「重色」，其余靠 2rpx 线条；
-    //   * 进行中的块，竖条换成品牌色并在右侧补一个 8rpx 的点，作为现在时标记。
+    // v2.4.1 的课块画法（与「每日事务」清单同一套语言）：
+    //   * **不再描边** —— 格子本身已有 2rpx 线，块再包一圈就是双重框，
+    //     这是「呆板」的另一半来源；块只靠着色纸自己撑起辨识度；
+    //   * 底色加深到 10%，左侧 6rpx 实色竖条保留，进行中换品牌浅底 + 圆点；
+    //   * 冲突（同格叠放）仍用金色细线，因为那是唯一需要立刻看见的状态。
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .offset(y = top)
             .height(height)
             .clip(shape)
-            .background(if (ongoing) p.brandTint else accent.copy(alpha = 0.06f))
-            .border(
-                width = m.rpx(2),
-                color = if (ongoing) p.brand.copy(alpha = 0.45f) else accent.copy(alpha = 0.30f),
-                shape = shape
+            .background(if (ongoing) p.brandTint else accent.copy(alpha = 0.10f))
+            .then(
+                if (conflict) {
+                    Modifier.border(m.rpx(2), Tokens.Gold, shape)
+                } else {
+                    Modifier
+                }
             )
             .drawBehind {
                 val w = m.rpx(6).toPx()

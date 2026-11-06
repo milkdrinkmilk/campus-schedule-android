@@ -169,9 +169,20 @@ fun SectionHeader(
                 .padding(top = m.rpx(10)),
             // 标题与右侧动作按底边对齐，避免 h2（行高 50）与 meta（行高 40）重心不齐
             verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.spacedBy(m.rpx(16))
         ) {
-            Text(text = title, style = m.h2, modifier = Modifier.padding(bottom = m.rpx(2)))
+            // v2.4.1：weight(1f) + maxLines。之前标题不占权重也不截断，
+            // 「03 / 提醒 · 最近要发生的 3 件事」这种长眉标会把标题挤到
+            // LazyColumn 边界外被裁成半截字 —— 概况页「本周分布」显示不全就是这个。
+            Text(
+                text = title,
+                style = m.h2,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(bottom = m.rpx(2)),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
             action?.invoke()
         }
     }
@@ -273,10 +284,14 @@ fun Tag(
 fun StatusPill(
     text: String,
     tone: TagTone,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    filled: Boolean = true
 ) {
     val m = LocalMetrics.current
-    val (bg, fg) = tagColors(tone)
+    val (bg0, fg) = tagColors(tone)
+    // v2.4.1：filled = false 时不铺底色，只留状态点 + 着色文字。
+    // 新的「每日事务」行要求行内干净无框，胶囊底会重新造出一层盒子。
+    val bg = if (filled) bg0 else Color.Transparent
     // 胶囊高度 = 文字行高 32 + 上下各 9 = 50rpx。
     // 之前固定 40rpx 而文字行高 32，上下只剩 4rpx，字号放大到 24 之后文字
     // 就会贴边甚至被裁 —— 这是「文本不齐」里最显眼的一处。
@@ -317,8 +332,11 @@ fun MetaLine(
 ) {
     val m = LocalMetrics.current
     val base = style ?: m.micro.copy(fontSize = m.sp(24), lineHeight = m.sp(36), color = Tokens.InkSecondary)
+    // v2.4.1：整行必须受父级宽度约束（fillMaxWidth）。之前无约束时，
+    // 在 LazyColumn 里一旦内容超宽就会把后面的元素顶出屏幕 ——
+    // 概况页「即将提醒」第三段文字显示不全就是这个。
     Row(
-        modifier = modifier,
+        modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(m.rpx(6))
     ) {
@@ -769,9 +787,44 @@ fun EmptyState(
     modifier: Modifier = Modifier,
     variant: SealVariant = SealVariant.DOT,
     lineArt: Boolean = false,
-    actions: @Composable (() -> Unit)? = null
+    actions: @Composable (() -> Unit)? = null,
+    inline: Boolean = false
 ) {
     val m = LocalMetrics.current
+    // v2.4.1：inline 变体。原来空态只有「居中大插画」一种，出现在清单中间时
+    // 像一整页海报，和上下文完全脱节。inline 把它压成一段左对齐的编辑排版：
+    // 一根短线 + 标题 + 一句正文，不抢屏幕中心。
+    if (inline) {
+        Column(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(horizontal = m.rpx(8), vertical = m.rpx(40)),
+            horizontalAlignment = Alignment.Start,
+            verticalArrangement = Arrangement.spacedBy(m.rpx(10))
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(m.rpx(40))
+                    .height(m.rpx(4))
+                    .clip(RoundedCornerShape(m.rpx(2)))
+                    .background(Tokens.InkFaint.copy(alpha = 0.6f))
+            )
+            Text(
+                text = title,
+                style = m.h3.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold),
+                maxLines = 2
+            )
+            Text(
+                text = body,
+                style = m.meta.copy(color = Tokens.InkSecondary),
+                modifier = Modifier.widthIn(max = m.rpx(560))
+            )
+            if (actions != null) {
+                Row(modifier = Modifier.padding(top = m.rpx(14))) { actions() }
+            }
+        }
+        return
+    }
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -886,7 +939,8 @@ private fun EmptyLineArt() {
 }
 
 /** 按进度描出路径的一段；progress 为 1 时直接整条画出。 */
-private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawGrowing(
+/** v2.4.1：改 internal，启动画面与空态插画共用同一套「描边生长」。 */
+internal fun androidx.compose.ui.graphics.drawscope.DrawScope.drawGrowing(
     path: Path,
     progress: Float,
     color: Color,

@@ -619,7 +619,8 @@ private fun WeekModeContent(
                 selectedDate = state.selectedDate,
                 onSelectDay = onSelectDate,
                 onItemClick = onItemClick,
-                nowMillis = now
+                nowMillis = now,
+                conflictIds = state.conflictIds
             )
         }
 
@@ -724,23 +725,19 @@ private fun TimelineModeContent(
                 ConflictBlock(state = state, onToggle = onToggleConflict)
             }
 
-            // 日期导航：左箭头 · 日期 · 右箭头，和清单左对齐
+            // v2.4.1 日期导航：标题块左对齐（编辑排版），右侧并排翻页箭头。
+            // 之前日期居中，而整页内容都是左起一条线，居中的标题会打断扫读节奏；
+            // 现在与 TimelineRow 的时间栏共用左边距。
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = m.rpx(4), bottom = m.rpx(14)),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(m.rpx(12)),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                DateNavButton(
-                    icon = AppIcons.chevronLeft,
-                    label = "前一天",
-                    enabled = true,
-                    onClick = onPrevDay
-                )
                 Column(
                     modifier = Modifier.weight(1f),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                    horizontalAlignment = Alignment.Start
                 ) {
                     Text(
                         text = CoreDate.formatDate(day),
@@ -748,7 +745,7 @@ private fun TimelineModeContent(
                         maxLines = 1
                     )
                     Text(
-                        text = if (CoreDate.isToday(day, now)) "今天" else CoreDate.formatMonthDay(day),
+                        text = if (CoreDate.isToday(day, now)) "今天 · " + CoreDate.formatMonthDay(day) else CoreDate.formatMonthDay(day),
                         style = m.micro.copy(
                             fontSize = m.sp(24),
                             lineHeight = m.sp(32),
@@ -758,12 +755,20 @@ private fun TimelineModeContent(
                         maxLines = 1
                     )
                 }
-                DateNavButton(
-                    icon = AppIcons.chevronRight,
-                    label = "后一天",
-                    enabled = true,
-                    onClick = onNextDay
-                )
+                Row(horizontalArrangement = Arrangement.spacedBy(m.rpx(8))) {
+                    DateNavButton(
+                        icon = AppIcons.chevronLeft,
+                        label = "前一天",
+                        enabled = true,
+                        onClick = onPrevDay
+                    )
+                    DateNavButton(
+                        icon = AppIcons.chevronRight,
+                        label = "后一天",
+                        enabled = true,
+                        onClick = onNextDay
+                    )
+                }
             }
 
             DayHeaderRow(
@@ -775,28 +780,40 @@ private fun TimelineModeContent(
             if (dayCount == 0) {
                 EmptyState(
                     title = "这一天还没有安排",
-                    body = "点右下角的按钮新建一条，它会按开始时间排进这一天的清单。",
-                    lineArt = true,
+                    body = "新建一条，它会按开始时间排进这一天的清单。",
+                    inline = true,
                     actions = {
                         AppButton(
                             text = "新建日程",
                             onClick = onCreateNew,
                             style = ButtonStyle.SECONDARY,
-                            block = false
+                            block = false,
+                            small = true
                         )
                     }
                 )
             } else {
-                dayEntries.forEachIndexed { index, entry ->
-                    val item = state.items.firstOrNull { it.id == entry.id }
-                    TimelineRow(
-                        entry = entry,
-                        onClick = { item?.let(onItemClick) },
-                        onToggleStar = { item?.let(onToggleStar) },
-                        modifier = Modifier
-                            .staggerEnter(tracker, entry.id, index)
-                            .padding(bottom = m.rpx(12))
-                    )
+                // v2.4.1：清单不再是「卡片墙」。所有条目装进一张**浅色纸面**
+                // （PaperTint 40% + 上下圆角 26rpx），行与行之间只有发丝线；
+                // 进行中的那条在纸面上用更深的浅底 + 左侧品牌竖条自己跳出来。
+                // 这样一天的事是「一叠纸上的一个段落」，不是十几个一模一样的框。
+                val sheetShape = RoundedCornerShape(m.rpx(26))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(sheetShape)
+                        .background(Tokens.PaperTint.copy(alpha = 0.40f))
+                ) {
+                    dayEntries.forEachIndexed { index, entry ->
+                        val item = state.items.firstOrNull { it.id == entry.id }
+                        TimelineRow(
+                            entry = entry,
+                            onClick = { item?.let(onItemClick) },
+                            onToggleStar = { item?.let(onToggleStar) },
+                            showDivider = index < dayEntries.lastIndex,
+                            modifier = Modifier.staggerEnter(tracker, entry.id, index)
+                        )
+                    }
                 }
             }
 

@@ -130,14 +130,27 @@ class MainActivity : ComponentActivity() {
                 // 启动动画盖在整个界面之上：覆盖层自己会在入场结束后淡出并移除。
                 // 主界面在覆盖层之下**同时**完成首帧组合，所以淡出时底下已经是
                 // 画好的页面，不是白纸 —— 这是「无闪屏」的关键。
+                // 启动时序（v2.4.1）：
+                // booted   —— 覆盖层第一帧就置真，让 SceneTransition 立刻开始收拢、
+                //              主界面趁覆盖层还在时完成全部重组（预热）。
+                // dismissed —— 约 1300ms 后移除覆盖层节点。之前 onFinished 一触发
+                //              就同时「撤遮罩 + 首次组合整页」，两件事挤在同几帧里，
+                //              这就是用户看到的「动画卡顿」。现在二者错开。
                 var booted by remember { mutableStateOf(false) }
+                var dismissed by remember { mutableStateOf(false) }
+                LaunchedEffect(Unit) {
+                    if (!dismissed) {
+                        kotlinx.coroutines.delay(1300)
+                        dismissed = true
+                    }
+                }
                 Box(modifier = Modifier.fillMaxSize()) {
                     AppRoot(
                         focusId = focusIdState.value,
                         focusToken = focusTokenState.value,
                         sceneEnabled = booted,
                     )
-                    if (!booted) {
+                    if (!dismissed) {
                         LaunchOverlay(onFinished = { booted = true })
                     }
                 }

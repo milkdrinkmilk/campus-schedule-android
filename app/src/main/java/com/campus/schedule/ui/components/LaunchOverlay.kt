@@ -1,9 +1,12 @@
 package com.campus.schedule.ui.components
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -18,6 +21,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathMeasure
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -30,74 +39,72 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * 启动画面（v2.4 新增）。
+ * 启动画面（v2.4.1 重做）。
  *
- * ## 为什么要它
+ * ## v2.4 的两个问题
  *
- * 冷启动时从「点图标」到「第一帧内容」之间有系统白屏。原来靠
- * `windowBackground` 换成纸色来遮，但遮住的是**空白**，不是**交代**：
- * 眼睛看到一块纸色突然换成列表，说不上错，但也没有「应用正在启动」的信号。
+ * 1. **太短**：入场约 500ms 就结束，用户还没看清字就切走了。
+ * 2. **卡顿**：真正的元凶是「首帧组合风暴」——`onFinished()` 一触发，
+ *    `SceneTransition.enabled` 翻转 + 主界面整棵树首次组合 + Room 首查返回
+ *    触发全页重组，全部挤在同几帧里；而覆盖层自己的淡出恰好撞上这段时间，
+ *    看上去就是「动画在最后掉帧」。另外横线用 `scaleX` 生长，缩放一条
+ *    4rpx 高的矩形会连圆角一起拉扁，观感也像卡了一下。
  *
- * ## 动画怎么设计
+ * ## v2.4.1 的做法
  *
- * 只有三段，全部是「线条生长」，和全站的线描语言一致：
- *
- * 1. 顶部一条 56rpx 的短横线从 0 画到满宽（220ms）；
- * 2. 应用名「校园日程」从下往上浮起 12rpx 并淡入（180ms，比横线晚 90ms）；
- * 3. 副标题「今天，从容一点」跟着淡入（160ms，再晚 90ms）。
- *
- * 三段加起来约 500ms，然后整块淡出交给主界面。
- *
- * ## 为什么不用系统 SplashScreen API
- *
- * `androidx.core:core-splashscreen` 需要新增依赖，且它规定的是「图标居中缩放」，
- * 和这里要的线描风格不符。用 Compose 自己画一层覆盖视图，代价只是多一个
- * 组合，且不引入任何依赖。
+ * * **主界面先预热再交接**：`LaunchedEffect(Unit)` 第一帧就调 `onFinished()`
+ *   （SceneTransition 开始收拢、页面在主界面下完整组合），覆盖层的线条
+ *   同时开始画 —— 两条时间线并行，等线条画完，页面早已稳定，淡出时不再
+ *   有任何重组抢帧。
+ * * **线条改成描边生长**：和空态插画同一套语言（Path + PathMeasure），
+ *   画的是「一张日程卡」的轮廓 —— 外框 + 表头分隔线 + 三条待办短线。
+ *   生长过程是逐段 stroke，不是缩放，不会有形变毛刺。
+ * * **节奏放慢但不拖沓**：线条约 780ms，文字错峰浮起，整块停留到约
+ *   1150ms 才开始淡出，全程约 1400ms。
+ * * 所有动画只动 `graphicsLayer` / Canvas 绘制内容，零布局参与。
  */
 @Composable
 fun LaunchOverlay(onFinished: () -> Unit) {
     val m = LocalMetrics.current
     val p = LocalPalette.current
     val reduced = LocalReducedMotion.current
-    // 像素密度：graphicsLayer 里 translationY 的单位是 px，rpx 要先换算
     val titleOffsetPx = with(androidx.compose.ui.platform.LocalDensity.current) {
-        m.rpx(12).toPx()
+        m.rpx(14).toPx()
     }
 
-    // 整块覆盖层的淡出进度（0 → 1 表示「已经淡出到透明」）
+    // 覆盖层整体淡出（0 → 1 = 完全透明）
     val fade = remember { Animatable(0f) }
-    // 内容入场
+    // 线条生长 0..1
     val lineGrow = remember { Animatable(0f) }
     val titleIn = remember { Animatable(0f) }
     val subIn = remember { Animatable(0f) }
-    // 是否还在显示：淡出结束后置 false，把节点整个移除
     var visible by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
         if (reduced) {
-            // 减弱动效：两段都直接跳到终值，只保留一次极短的停留
-            lineGrow.snapTo(1f)
-            titleIn.snapTo(1f)
-            subIn.snapTo(1f)
-            delay(180)
-            fade.snapTo(1f)
-            visible = false
             onFinished()
+            delay(200)
+            visible = false
             return@LaunchedEffect
         }
-        // 两段并行：横线生长 + 两行文字错峰浮起
-        launch {
-            delay(90)
-            titleIn.animateTo(1f, tween(180, easing = Motion.EaseSoft))
-            delay(90)
-            subIn.animateTo(1f, tween(160, easing = Motion.EaseSoft))
-        }
-        lineGrow.animateTo(1f, tween(220, easing = Motion.EaseSoft))
-        // 入场做完先放开主界面（它自己也在做 scene transition），
-        // 再停留一小会儿，然后整块淡出。
+        // ① 立刻交接：主界面从这一帧开始组合/收拢，与线条并行预热
         onFinished()
-        delay(420)
-        fade.animateTo(1f, tween(Motion.DurExit, easing = Motion.EaseInOut))
+        // ② 让出一帧，确保 SceneTransition 的首次收拢不与本组件的
+        //    第一次绘制抢同一帧（这是 v2.4 「卡顿」的直接来源之一）
+        delay(32)
+        launch {
+            delay(160)
+            titleIn.animateTo(1f, tween(220, easing = LinearOutSlowInEasing))
+            delay(120)
+            subIn.animateTo(1f, tween(200, easing = LinearOutSlowInEasing))
+        }
+        lineGrow.animateTo(1f, tween(780, easing = Motion.EaseSoft))
+        // ③ 线条完成后停一会儿再退场；此时页面已预热完毕，
+        //    淡出期间没有任何重组，不会再掉帧。
+        //    （MainActivity 会在约 1300ms 时把本组件从树里移除，
+        //     与这里的淡出结束时间基本对齐。）
+        delay(320)
+        fade.animateTo(1f, tween(260, easing = Motion.EaseInOut))
         visible = false
     }
 
@@ -110,25 +117,67 @@ fun LaunchOverlay(onFinished: () -> Unit) {
             .background(Tokens.Paper),
         contentAlignment = Alignment.Center
     ) {
-        androidx.compose.foundation.layout.Column(
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // 一条会生长的横线：启动动画唯一「动」的元素
-            Box(
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            // 一张正在被「画出来」的日程卡轮廓
+            Canvas(
                 modifier = Modifier
-                    .width(m.rpx(56))
-                    .height(m.rpx(4))
-                    .graphicsLayer {
-                        scaleX = lineGrow.value
-                        alpha = lineGrow.value
+                    .width(m.rpx(120))
+                    .height(m.rpx(96))
+            ) {
+                val grow = lineGrow.value
+                val w = size.width
+                val h = size.height
+                val strokeW = m.rpx(3).toPx()
+
+                val left = w * 0.08f
+                val top = h * 0.08f
+                val right = w * 0.92f
+                val bottom = h * 0.92f
+                val radius = (bottom - top) * 0.18f
+
+                // 外框：占生长的前 55%
+                val frame = Path().apply {
+                    addRoundRect(
+                        androidx.compose.ui.geometry.RoundRect(
+                            left = left, top = top, right = right, bottom = bottom,
+                            cornerRadius = CornerRadius(radius, radius)
+                        )
+                    )
+                }
+                drawGrowing(frame, (grow / 0.55f).coerceIn(0f, 1f), p.brand.copy(alpha = 0.5f), strokeW)
+
+                // 表头分隔线：35%~60%
+                val headerY = top + (bottom - top) * 0.30f
+                val header = Path().apply {
+                    moveTo(left + (right - left) * 0.12f, headerY)
+                    lineTo(right - (right - left) * 0.12f, headerY)
+                }
+                drawGrowing(header, ((grow - 0.35f) / 0.25f).coerceIn(0f, 1f), p.brand, strokeW)
+
+                // 三条待办短线：55%/70%/85% 起步，每条 0.2 的窗口
+                val x0 = left + (right - left) * 0.12f
+                val rows = listOf(0.50f to 0.72f, 0.64f to 0.88f, 0.78f to 0.58f)
+                rows.forEachIndexed { i, (yFrac, lenFrac) ->
+                    val y = top + (bottom - top) * yFrac
+                    val line = Path().apply {
+                        moveTo(x0, y)
+                        lineTo(x0 + (right - left - (x0 - left)) * lenFrac, y)
                     }
-                    .background(p.brand, RoundedCornerShape(m.rpx(2)))
-            )
+                    val begin = 0.55f + i * 0.15f
+                    drawGrowing(
+                        line,
+                        ((grow - begin) / 0.2f).coerceIn(0f, 1f),
+                        Tokens.InkMuted.copy(alpha = 0.55f),
+                        strokeW
+                    )
+                }
+            }
+
             Text(
                 text = "校园日程",
                 style = m.h1.copy(color = Tokens.Ink, fontWeight = FontWeight.Bold),
                 modifier = Modifier
-                    .padding(top = m.rpx(28))
+                    .padding(top = m.rpx(32))
                     .graphicsLayer {
                         alpha = titleIn.value
                         translationY = (1f - titleIn.value) * titleOffsetPx
@@ -140,7 +189,7 @@ fun LaunchOverlay(onFinished: () -> Unit) {
                 text = "今天，从容一点",
                 style = m.meta.copy(color = Tokens.InkMuted),
                 modifier = Modifier
-                    .padding(top = m.rpx(8))
+                    .padding(top = m.rpx(10))
                     .graphicsLayer { alpha = subIn.value },
                 textAlign = TextAlign.Center,
                 maxLines = 1

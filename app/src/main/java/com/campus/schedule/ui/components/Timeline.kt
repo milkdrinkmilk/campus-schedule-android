@@ -122,101 +122,115 @@ private fun NavArrowButton(
 }
 
 /**
- * 一条日程（v2.4：改为「每日事务」行）。
+ * 一条日程（v2.4.1：无框清单行）。
  *
- * ## 为什么不再是时间轴
+ * ## 为什么不再是卡片
  *
- * 之前左侧有一条 132rpx 的时间列 + 右侧卡片，本质是「时间轴视图」：
- * 纵向按整点铺开、卡片按小时定位。实际用下来问题是：
+ * v2.4 的行是「每条日程一个圆角矩形」：白底 + 2rpx 描边 + 左侧色条。
+ * 一天十几件事排下来，就是十几个一模一样的盒子摞在一起 —— 用户说的
+ * 「项目框架过于呆板」正是这个：**框把注意力从内容上抢走了**。
  *
- * * 一天只有两三件事时，屏幕大部分是空的刻度线，信息密度太低；
- * * 事件时间不规整（14:37 这种）时，卡片在刻度上永远是倾斜的，看着难受；
- * * 用户真正想要的是「今天要做什么，按先后顺序」，不是「这一天的时间分布」。
+ * v2.4.1 改成「清单」而不是「卡片墙」：
  *
- * 所以这里改成一行一条的清单：**左侧定宽时间槽 + 中间正文 + 右侧星标**，
- * 按开始时间从早到晚排（排序在 ViewModel 里做，见 `visibleItems`）。
- * 时间列只显示开始时间，跨天/全天显示「全天」。
+ * * 整行**没有边框、没有底色**，只有一条贯穿的 2rpx 发丝分隔线
+ *   （最后一项不画），像印刷时刻在纸上的栏线；
+ * * 时间槽右对齐成一条竖线，日期数字与时间共用同一列 ——
+ *   扫读节奏由「左边的数字塔」建立，而不是靠一个个框；
+ * * 状态不再装进胶囊，直接用着色文字 + 一个小状态点；
+ * * 进行中的条目用**左侧 6rpx 品牌竖条 + 极浅底**标出来，
+ *   全页最多一处「有底色」，视线自然落在当下；
+ * * 冲突是唯一保留描边的状态（金色细线），因为它需要被立刻看见。
  *
- * ## 对齐要点（一行内三列必须共用一条基线）
+ * ## 对齐要点
  *
- * * 三列都是 `Alignment.Top`，不再用 `padding(top)` 去「凑」中线；
- * * 时间槽的行高（48rpx）与正文标题的行高（46rpx）几乎相等，
- *   差值 2rpx 用时间槽的 `padding(top = 1rpx)` 抹平，肉眼对齐；
- * * 星标点击区 56rpx 比图标大一圈，图标本身在点击区正中，
- *   所以星标容器顶部对齐后，图标中心比标题中心低 5rpx，用 `padding(top = 6rpx)` 抵回。
+ * * 三列 `Alignment.Top`，首行行高统一 46rpx，基线天然齐平；
+ * * 时间列定宽 132rpx 右对齐；正文左起 28rpx；星标点击区 56rpx；
+ * * 分隔线在 padding 之外绘制（inset 左右各 0），保证通栏。
  */
 @Composable
 fun TimelineRow(
     entry: TimelineEntry,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    onToggleStar: (() -> Unit)? = null
+    onToggleStar: (() -> Unit)? = null,
+    showDivider: Boolean = true
 ) {
     val m = LocalMetrics.current
     val p = LocalPalette.current
     val interaction = rememberPressInteraction()
-    val shape = RoundedCornerShape(m.radiusMd)
 
-    // 色系：用户在编辑页选的「卡片色系」在这里才真正看得见。
-    // 只有卡片左侧 6rpx 的短竖条着色，面积很小，
-    // 既保留「每条日程有自己的颜色」的辨识度，又不会让整页花掉。
-    val accentColor = Tokens.accentColor(entry.accent)
+    // 色系：用户在编辑页选的「卡片色系」体现在时间数字的颜色上。
     val accentText = Tokens.accentTextColor(entry.accent)
-    // 进行中的条目换成当前色板的浅底，一眼能看到「正在发生的事」
     val ongoing = entry.statusTone == TagTone.ONGOING
+    val ended = entry.statusTone == TagTone.ENDED
 
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(shape)
-            .background(if (ongoing) p.brandTint.copy(alpha = 0.7f) else Tokens.PaperRaised)
-            .drawBehind {
-                // 左侧短竖条：上下内缩，圆头，不顶到圆角上
-                val w = m.rpx(6).toPx()
-                val inset = m.rpx(18).toPx()
-                drawRoundRect(
-                    color = if (ongoing) p.brand else accentColor,
-                    topLeft = androidx.compose.ui.geometry.Offset(0f, inset),
-                    size = androidx.compose.ui.geometry.Size(
-                        w,
-                        (size.height - inset * 2).coerceAtLeast(0f)
-                    ),
-                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(w / 2f, w / 2f)
-                )
-            }
-            .border(
-                width = m.rpx(2),
-                color = when {
-                    entry.conflict -> Tokens.Gold
-                    ongoing -> p.brand.copy(alpha = 0.35f)
-                    else -> Tokens.Line
-                },
-                shape = shape
+            .background(
+                if (ongoing) p.brandTint.copy(alpha = 0.45f) else Color.Transparent
             )
-            .pressHighlight(interaction, shape)
+            .drawBehind {
+                // 左侧进行中竖条：贴着屏幕边缘的一枚圆头短线
+                if (ongoing) {
+                    val w = m.rpx(6).toPx()
+                    val inset = m.rpx(20).toPx()
+                    drawRoundRect(
+                        color = p.brand,
+                        topLeft = androidx.compose.ui.geometry.Offset(0f, inset),
+                        size = androidx.compose.ui.geometry.Size(
+                            w,
+                            (size.height - inset * 2).coerceAtLeast(0f)
+                        ),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(w / 2f, w / 2f)
+                    )
+                }
+                // 通栏发丝线：最后一项不画，避免和页面底部留白打架
+                if (showDivider) {
+                    val lw = m.rpx(2).toPx()
+                    drawRect(
+                        color = Tokens.Line,
+                        topLeft = androidx.compose.ui.geometry.Offset(0f, size.height - lw),
+                        size = androidx.compose.ui.geometry.Size(size.width, lw)
+                    )
+                }
+            }
+            .then(
+                if (entry.conflict) {
+                    Modifier.border(
+                        width = m.rpx(2),
+                        color = Tokens.Gold,
+                        shape = RoundedCornerShape(m.radiusSm)
+                    )
+                } else {
+                    Modifier
+                }
+            )
+            .pressHighlight(interaction, RoundedCornerShape(m.radiusSm))
             .clickableNoRipple(interaction, onClick = onClick)
             .padding(
-                start = m.rpx(22),
-                end = m.rpx(18),
-                top = m.rpx(18),
-                bottom = m.rpx(18)
+                start = m.rpx(24),
+                end = m.rpx(16),
+                top = m.rpx(22),
+                bottom = m.rpx(22)
             ),
         verticalAlignment = Alignment.Top
     ) {
-        // ---- 时间槽 ----
-        // 定宽 120rpx：能放下「08:00」四位数，两行「09:55 / 已结束」也不会撑开。
+        // ---- 时间槽（右对齐，形成一条竖向数字栏）----
         Column(
-            modifier = Modifier
-                .width(m.rpx(120))
-                .padding(top = m.rpx(1)),
-            horizontalAlignment = Alignment.Start
+            modifier = Modifier.width(m.rpx(132)),
+            horizontalAlignment = Alignment.End
         ) {
             Text(
                 text = entry.timeText,
                 style = m.numeric.copy(
                     fontSize = m.sp(30),
                     lineHeight = m.sp(46),
-                    color = if (ongoing) p.brandDeep else accentText,
+                    color = when {
+                        ongoing -> p.brandDeep
+                        ended -> Tokens.InkFaint
+                        else -> accentText
+                    },
                     fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
                 ),
                 maxLines = 1
@@ -239,27 +253,27 @@ fun TimelineRow(
         Column(
             modifier = Modifier
                 .weight(1f)
-                .padding(start = m.rpx(14)),
+                .padding(start = m.rpx(28)),
             verticalArrangement = Arrangement.spacedBy(m.rpx(6))
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(m.rpx(12)),
-                // 标题与胶囊底边对齐：胶囊高度固定，Top 对齐会让它压在标题上方
                 verticalAlignment = Alignment.Bottom
             ) {
                 Text(
                     text = entry.title,
                     style = m.bodyLg.copy(
                         fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
-                        // 与时间槽首行同高，两列第一行落在同一条基线上
-                        lineHeight = m.sp(46)
+                        lineHeight = m.sp(46),
+                        color = if (ended) Tokens.InkSecondary else Tokens.Ink
                     ),
                     modifier = Modifier.weight(1f),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
-                StatusPill(text = entry.status, tone = entry.statusTone)
+                // 状态：不着重色的裸文字 + 小点，替代原来的胶囊
+                StatusPill(text = entry.status, tone = entry.statusTone, filled = false)
             }
 
             val detail = listOf(entry.meta, entry.location)
@@ -276,11 +290,7 @@ fun TimelineRow(
         }
 
         if (onToggleStar != null) {
-            // 星标与标题首行视觉居中对齐（见上面的对齐说明）
-            Box(
-                modifier = Modifier
-                    .padding(start = m.rpx(4), top = m.rpx(6))
-            ) {
+            Box(modifier = Modifier.padding(start = m.rpx(4), top = m.rpx(6))) {
                 StarButton(starred = entry.starred, onClick = onToggleStar)
             }
         }

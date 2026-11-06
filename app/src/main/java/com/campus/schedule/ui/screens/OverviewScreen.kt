@@ -105,7 +105,7 @@ fun OverviewScreen(
             Masthead(
                 kicker = "OVERVIEW / 第 ${CoreDate.isoWeekNumber(now)} 周",
                 title = "概况",
-                meta = "${CoreDate.formatDate(now)} · 共 ${items.size} 条日程"
+                meta = "${CoreDate.formatDate(now)} · 共 ${items.size} 条日程",
             )
         }
 

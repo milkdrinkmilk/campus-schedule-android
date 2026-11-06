@@ -543,7 +543,36 @@ WeekModeContent     课表（原 WeekGrid，保留分段映射的当前时间线
 
 ---
 
-## 十五、下一步（可选增强）
+## 十五、v2.4.1 补丁：截断、清单视效与启动时序
+
+针对「本周分布文字显示不全 / 日程条目框太呆板 / 启动动画过短且卡顿」四条反馈。
+
+| 现象 | 根因 | 处理 |
+| --- | --- | --- |
+| 概况页「本周分布」等标题显示不全 | `SectionHeader` 标题不带权重也不截断，长眉标把它挤出 LazyColumn 边界；`MetaLine` 整行无宽度约束，超宽时把后面的 Tag 顶出屏幕 | 标题改 `weight(1f) + maxLines=1 + Ellipsis`；`MetaLine` 的 Row 补 `fillMaxWidth()` |
+| 日程条目「一堵一模一样的框」 | v2.4 每行都是白底卡片 + 2rpx 描边 + 左色条，十几个盒子摞在一起，框把注意力从内容上抢走 | **清单化重做**：行不再有边框和底色，只留一条通栏 2rpx 发丝线（末行不画）；时间槽 132rpx 右对齐成竖向数字栏；状态胶囊换成裸文字 + 小圆点（`StatusPill(filled=false)`）；进行中的条目用浅底 + 左侧品牌竖条自己跳出来；冲突仍是唯一保留描边的状态（金色）。整组条目再装进一张 `PaperTint 40%` 的浅色纸面（上下圆角 26rpx），一天的事变成「一叠纸上的一个段落」 |
+| 课表块同样双重描边 | 格子本身已有 2rpx 线，块再包一圈 | 课块去描边，底色加深到 10%；只有冲突块（`WeekGrid(conflictIds=…)`）保留金色细线 |
+| 日期导航居中、空态像一整页海报 | 与全页左起的扫读节奏脱节 | 日期标题块改左对齐（编辑排版），翻页箭头并排收到右侧；`EmptyState` 新增 `inline` 变体：短线 + 标题 + 一句正文，左对齐嵌入清单 |
+| 启动动画过短（约 500ms） | 入场三段挤在 500ms 内 | 线条改为「日程卡轮廓」的描边生长（外框 + 表头线 + 三条待办短线，PathMeasure 逐段 stroke，与空态插画共用 `drawGrowing`），主流程约 1150ms，全程约 1400ms |
+| 启动动画结尾掉帧 | `onFinished()` 同时触发「撤遮罩 + SceneTransition + 主界面首次组合 + Room 首查回填」，全部挤在同几帧 | MainActivity 把时序拆成两个状态：`booted`（覆盖层第一帧就置真 → 主界面趁遮罩还在时完整组合预热）与 `dismissed`（1300ms 后才移除覆盖层节点）；淡出期间不再有任何重组 |
+
+### 代码侧改动
+
+- `ui/components/Primitives.kt`（`SectionHeader` / `MetaLine` / `StatusPill.filled` / `EmptyState.inline` / `drawGrowing` 改 internal）。
+- `ui/components/Timeline.kt`（`TimelineRow` 重写为无框清单行，新增 `showDivider`）。
+- `ui/components/LaunchOverlay.kt`（重写：描边生长 + 新时序）、`MainActivity.kt`（`booted` / `dismissed` 解耦）。
+- `ui/screens/ScheduleScreen.kt`（日期导航左对齐、纸面清单容器、空态 inline、`WeekGrid` 传 `conflictIds`）。
+- `ui/components/WeekGrid.kt`（课块去描边、`conflictIds` 参数）。
+- `app/build.gradle.kts`：`versionCode 10` / `versionName 2.4.1`。
+
+### 回归
+
+- `gradle assembleDebug testDebugUnitTest`：BUILD SUCCESSFUL。
+- 单测：`CoreDateTest` 13 / `CoreConflictTest` 7 / `CoreValidatorsTest` 11 / `UiRegressionGuardTest` 4，共 35 个，0 失败。
+
+---
+
+## 十六、下一步（可选增强）
 
 - 重复日程规则（每周 / 每月 / 工作日）
 - 首页小组件（今日日程）

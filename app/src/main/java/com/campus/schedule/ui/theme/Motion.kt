@@ -22,15 +22,18 @@ import androidx.compose.animation.core.tween
 object Motion {
 
     // ---- 时长（ms），与 --dur-* 一致 ----
-    const val DurPress = 140
-    const val DurFast = 170
-    const val DurBase = 210
-    const val DurSheet = 210
-    const val DurExit = 170
-    const val DurToastEnter = 190
-    const val DurToastExit = 160
-    const val DurTab = 210
-    const val DurWake = 180
+    // v2.6：120Hz 优化。所有时长压缩 ~15%，让高刷屏上过渡更跟手。
+    // 原则：入场快、出场更快；tab 切换比页转场短；stagger 步进压到 30ms
+    // 避免列表项在高刷下「一个一个蹦出来」的拖沓感。
+    const val DurPress = 120
+    const val DurFast = 140
+    const val DurBase = 180
+    const val DurSheet = 180
+    const val DurExit = 140
+    const val DurToastEnter = 160
+    const val DurToastExit = 130
+    const val DurTab = 180
+    const val DurWake = 150
 
     /**
      * 页面级横向转场（v2.1）。
@@ -38,13 +41,14 @@ object Motion {
      * 比 [DurTab] 长一点：三个 Tab 之间做的是「同层横移 + 交叉淡入」，
      * 位移幅度大（整屏的 1/8），太快会显得硬。
      */
-    const val DurPage = 230
+    const val DurPage = 200
 
     /** 覆盖层（提示框 / 弹层）进出场。 */
-    const val DurOverlay = 200
+    const val DurOverlay = 170
 
     /** 错位入场步进（ms）。 */
-    const val StaggerStep = 42
+    // v2.6：stagger 步进从 42ms 压到 30ms，高刷下列表入场更紧凑。
+    const val StaggerStep = 30
 
     /** 参与错位入场的最大条目数，超出后不再累加延迟。 */
     const val StaggerMax = 7

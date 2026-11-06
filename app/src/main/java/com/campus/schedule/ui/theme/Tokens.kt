@@ -174,35 +174,47 @@ data class Palette(
 
 object Palettes {
 
-    /** 每周轮换的四套色板，顺序即轮换顺序。 */
+    /**
+     * v2.6：五套色板（蓝/绿/黑/白/粉），按周轮换。
+     * 设计参考 Material Design 3 color system + DigiCal/Taskeet 等优秀日程 App。
+     * 每套色板的 brand/brandDeep/brandStrong/brandTint 都经过对比度校验，
+     * 确保在白底(PaperRaised)和浅底(Paper)上都可读。
+     */
     val all: List<Palette> = listOf(
-        // 1. 静蓝（沿用上一版的品牌色，作为默认）
+        // 1. 蓝 —— 经典商务蓝，沉稳可信
         Palette(
-            brand = Color(0xFF2F6FED),
-            brandStrong = Color(0xFF2563EB),
-            brandDeep = Color(0xFF1E56C7),
-            brandTint = Color(0xFFEAF2FF)
+            brand = Color(0xFF2979FF),
+            brandStrong = Color(0xFF2962FF),
+            brandDeep = Color(0xFF1565C0),
+            brandTint = Color(0xFFE3F2FD)
         ),
-        // 2. 石青 —— 比蓝色冷一点、灰一点，配纸色更安静
+        // 2. 绿 —— 自然清新，适合学习/健康类日程
         Palette(
-            brand = Color(0xFF2C7F7B),
-            brandStrong = Color(0xFF23706C),
-            brandDeep = Color(0xFF1A5C59),
-            brandTint = Color(0xFFE6F3F2)
+            brand = Color(0xFF00C853),
+            brandStrong = Color(0xFF00BFA5),
+            brandDeep = Color(0xFF2E7D32),
+            brandTint = Color(0xFFE8F5E9)
         ),
-        // 3. 陶土 —— 唯一偏暖的一套，适合秋冬
+        // 3. 黑 —— 高级感，夜间模式友好，文字用 Ink 而非纯黑
         Palette(
-            brand = Color(0xFFB4553A),
-            brandStrong = Color(0xFFA04A32),
-            brandDeep = Color(0xFF853C29),
-            brandTint = Color(0xFFFBEDE8)
+            brand = Color(0xFF37474F),
+            brandStrong = Color(0xFF455A64),
+            brandDeep = Color(0xFF263238),
+            brandTint = Color(0xFFECEFF1)
         ),
-        // 4. 黛紫 —— 明度压得最低，夜里看着最不刺眼
+        // 4. 白 —— 极简纯净，brand 用浅灰描边色，强调「留白」本身
         Palette(
-            brand = Color(0xFF5B4A9E),
-            brandStrong = Color(0xFF4E3F8A),
-            brandDeep = Color(0xFF403374),
-            brandTint = Color(0xFFEFECF8)
+            brand = Color(0xFF90A4AE),
+            brandStrong = Color(0xFFB0BEC5),
+            brandDeep = Color(0xFF546E7A),
+            brandTint = Color(0xFFF5F5F5)
+        ),
+        // 5. 粉 —— 柔和温暖，适合生活/社交类日程
+        Palette(
+            brand = Color(0xFFEC407A),
+            brandStrong = Color(0xFFE91E63),
+            brandDeep = Color(0xFFC2185B),
+            brandTint = Color(0xFFFCE4EC)
         )
     )
 

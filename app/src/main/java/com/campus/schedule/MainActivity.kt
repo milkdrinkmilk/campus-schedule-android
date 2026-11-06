@@ -21,6 +21,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -643,15 +644,20 @@ private fun AppBottomBar(
                 label = "tabPill"
             )
 
+            // v2.6：药丸改用 brand 实色 + 低透明度，比 brandDeep 更鲜明；
+            // 同时加一圈极淡的描边，让药丸在「白」色板下也有边界感。
             Box(
                 modifier = Modifier
                     .offset(x = pillOffset.value, y = pillTop)
                     .width(pillWidth)
                     .height(pillHeight)
                     .clip(RoundedCornerShape(m.radiusPill))
-                    // v2.5：brandTint 在白底上几乎看不见（静蓝周 0xFFEAF2FF vs PaperRaised FFFFFF）。
-                    // 改用 brandDeep + 低透明度：既有品牌色辨识度，又不会喧宾夺主。
-                    .background(p.brandDeep.copy(alpha = 0.14f))
+                    .background(p.brand.copy(alpha = 0.12f))
+                    .border(
+                        width = m.rpx(1),
+                        color = p.brand.copy(alpha = 0.18f),
+                        shape = RoundedCornerShape(m.radiusPill)
+                    )
             )
 
             Row(modifier = Modifier.fillMaxSize()) {

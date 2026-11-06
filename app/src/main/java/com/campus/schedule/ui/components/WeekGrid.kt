@@ -372,6 +372,7 @@ private fun WeekBlockView(
 ) {
     val m = LocalMetrics.current
     val p = LocalPalette.current
+    val density = LocalDensity.current
     val interaction = rememberPressInteraction()
     val shape = RoundedCornerShape(m.radiusSm)
     val accent = Tokens.accentColor(block.item.accent)
@@ -385,7 +386,9 @@ private fun WeekBlockView(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .offset(y = top)
+            // v2.6：120Hz 优化。offset 会触发布局测量，在课块密集时导致掉帧。
+            // 改用 graphicsLayer.translationY，纯合成层操作，不触发重组。
+            .graphicsLayer { translationY = top.toPx() }
             .height(height)
             .clip(shape)
             .background(if (ongoing) p.brandTint else accent.copy(alpha = 0.10f))
@@ -487,12 +490,16 @@ private fun CurrentTimeLine(nowMillis: Long, cellH: Dp, gap: Dp) {
     val breathe = if (reduced) {
         1f
     } else {
+        // v2.6：120Hz 优化。
+        // 呼吸动画周期从 1400ms 缩短到 900ms，让高刷屏上过渡更丝滑；
+        // 同时用 LinearEasing 替代 EaseInOut，避免在峰值处减速导致的「顿挫感」。
+        // alpha 范围收窄到 0.5→1，减少低透明度帧的视觉闪烁。
         rememberInfiniteTransition(label = "now-dot")
             .animateFloat(
-                initialValue = 0.32f,
+                initialValue = 0.5f,
                 targetValue = 1f,
                 animationSpec = infiniteRepeatable(
-                    animation = tween(1400, easing = Motion.EaseInOut),
+                    animation = tween(900, easing = androidx.compose.animation.core.LinearEasing),
                     repeatMode = RepeatMode.Reverse
                 ),
                 label = "now-dot-alpha"

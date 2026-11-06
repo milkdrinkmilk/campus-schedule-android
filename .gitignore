@@ -1,0 +1,29 @@
+# 构建产物与本机配置（项目根即 android-app）
+/.tmp/
+/build/
+/app/build/
+/.gradle/
+/.kotlin/
+/local.properties
+/dist/
+
+# 体积大的工具链不随项目分发；单独拷走项目时按需放入 tools/
+/tools/jdk17/
+/tools/gradle8/
+/tools/gradle-home/
+
+# debug 签名随项目分发，保证源码包解压即可构建
+*.keystore
+!/tools/debug.keystore
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# GitHub 仓库的本地覆盖配置
+/dist/

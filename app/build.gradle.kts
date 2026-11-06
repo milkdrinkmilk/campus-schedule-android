@@ -12,8 +12,8 @@ android {
         applicationId = "com.campus.schedule"
         minSdk = 26
         targetSdk = 34
-        versionCode = 7
-        versionName = "2.2.0"
+        versionCode = 8
+        versionName = "2.3.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -45,6 +45,12 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
+        // Compose 1.6 的 HorizontalPager / rememberPagerState 仍是实验 API，
+        // 时间轴翻页要用到，所以模块级统一 opt-in，而不是每个函数写一遍 @OptIn。
+        freeCompilerArgs += listOf(
+            "-opt-in=androidx.compose.foundation.ExperimentalFoundationApi",
+            "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api"
+        )
     }
 
     buildFeatures {

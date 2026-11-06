@@ -56,6 +56,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import com.campus.schedule.ui.components.clickableNoRipple
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.campus.schedule.core.CoreDate
@@ -148,6 +153,20 @@ private enum class Tab(val label: String, val iconRes: Int) {
     MINE("我的", AppIcons.mine)
 }
 
+/** Tab → 它对应的首页。 */
+private fun Tab.toPage(): Page = when (this) {
+    Tab.SCHEDULE -> Page.SCHEDULE
+    Tab.OVERVIEW -> Page.OVERVIEW
+    Tab.MINE -> Page.MINE
+}
+
+/** 页面 → 它应该高亮的 Tab（编辑页不属于任何 Tab，回落到日程）。 */
+private fun Page.tabOrDefault(): Tab = when (this) {
+    Page.OVERVIEW -> Tab.OVERVIEW
+    Page.MINE -> Tab.MINE
+    else -> Tab.SCHEDULE
+}
+
 @Composable
 private fun AppRoot(focusId: String?, focusToken: Int) {
     val context = LocalContext.current
@@ -159,14 +178,46 @@ private fun AppRoot(focusId: String?, focusToken: Int) {
     val toast by vm.toast.collectAsStateWithLifecycle()
     val items by vm.allItems.collectAsStateWithLifecycle()
 
-    var page by remember { mutableStateOf(Page.SCHEDULE) }
+    // 返回栈：栈底的 Tab 页是「首页」，往上压二级页（目前只有编辑页）。
+    // 每次返回只弹一层，弹出来的目标页决定 tab 高亮 —— 见 BackHandler。
+    val pageStack = remember { mutableStateListOf(Page.SCHEDULE) }
+    // 当前页 = 栈顶。写成 lambda 每次读都取最新栈顶，避免多存一份状态
+    val currentPage: () -> Page = { pageStack.last() }
     var tab by remember { mutableStateOf(Tab.SCHEDULE) }
     var editing by remember { mutableStateOf<ScheduleItem?>(null) }
+    // 页面转场方向：1 = 往右翻（新页从右进），-1 = 往左翻。
+    var navDirection by remember { mutableIntStateOf(1) }
     var confirmClearAll by remember { mutableStateOf(false) }
     var pendingDiscard by remember { mutableStateOf(false) }
 
-    /** 页面转场方向：1 = 往右翻（新页从右进），-1 = 往左翻。 */
-    var navDirection by remember { mutableIntStateOf(1) }
+    fun push(next: Page) {
+        if (currentPage() == next) return
+        if (next == Page.EDIT) navDirection = -1 else {
+            navDirection = if ((next.tabOrDefault().ordinal) >= tab.ordinal) 1 else -1
+        }
+        pageStack.add(next)
+    }
+
+    /** 回到某个 Tab 页：把栈裁剪到只保留它（Tab 之间切换 = 换首页）。 */
+    fun switchTab(next: Tab) {
+        if (next == tab && currentPage() == next.toPage()) return
+        navDirection = if (next.ordinal > tab.ordinal) 1 else -1
+        tab = next
+        editing = null
+        pageStack.clear()
+        pageStack.add(next.toPage())
+    }
+
+    /** 从二级页返回一级：弹栈，目标页决定 tab。 */
+    fun popPage() {
+        if (pageStack.size <= 1) return
+        navDirection = -1
+        val leaving = pageStack.last()
+        pageStack.removeAt(pageStack.lastIndex)
+        val target = pageStack.last()
+        if (leaving == Page.EDIT) editing = null
+        if (target != Page.EDIT) tab = target.tabOrDefault()
+    }
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -178,18 +229,24 @@ private fun AppRoot(focusId: String?, focusToken: Int) {
     LaunchedEffect(focusId, focusToken, items) {
         if (focusId == null || handledToken == focusToken || items.isEmpty()) return@LaunchedEffect
         val target = items.firstOrNull { it.id == focusId } ?: return@LaunchedEffect
-        navDirection = -1
         editing = target
-        page = Page.EDIT
+        push(Page.EDIT)
         handledToken = focusToken
     }
 
-    // 物理返回键：编辑页自己处理（可能要确认丢弃改动），非首页把 Tab 退回「日程」，
-    // 其余情况不拦截，交给系统退出应用。
-    BackHandler(enabled = tab != Tab.SCHEDULE) {
+    // 物理返回键：只返回**上一级**（v2.3）。
+    //
+    // 旧版写的是 `tab = SCHEDULE; page = SCHEDULE`，于是从「我的」按返回会
+    // 一步跨到日程首页 —— 相当于把 Tab 历史全部丢掉，连点两次返回的人会
+    // 直接怀疑人生。现在维护一个真正的返回栈：进二级页压栈，按返回弹一层。
+    // 编辑页自己还有一层 BackHandler（脏数据确认），它比这里先响应。
+    BackHandler(enabled = pageStack.size > 1) {
         navDirection = -1
-        tab = Tab.SCHEDULE
-        page = Page.SCHEDULE
+        val leaving = pageStack.last()
+        pageStack.removeAt(pageStack.lastIndex)
+        val target = pageStack.last()
+        if (leaving == Page.EDIT) editing = null
+        if (target != Page.EDIT) tab = target.tabOrDefault()
     }
 
     LaunchedEffect(toast) {
@@ -254,24 +311,13 @@ private fun AppRoot(focusId: String?, focusToken: Int) {
             bottomBar = {
                 AppBottomBar(
                     selected = tab,
-                    enabled = page != Page.EDIT,
-                    onSelect = { next ->
-                        if (next != tab) {
-                            // 按 Tab 的左右顺序决定滑动方向，而不是按点击先后
-                            navDirection = if (next.ordinal > tab.ordinal) 1 else -1
-                            tab = next
-                            page = when (next) {
-                                Tab.SCHEDULE -> Page.SCHEDULE
-                                Tab.OVERVIEW -> Page.OVERVIEW
-                                Tab.MINE -> Page.MINE
-                            }
-                        }
-                    }
+                    enabled = currentPage() != Page.EDIT,
+                    onSelect = { next -> switchTab(next) }
                 )
             },
             floatingActionButton = {
                 AnimatedVisibility(
-                    visible = page == Page.SCHEDULE,
+                    visible = currentPage() == Page.SCHEDULE,
                     enter = scaleIn(
                         animationSpec = Motion.overlay(LocalReducedMotion.current),
                         initialScale = 0.8f
@@ -279,9 +325,8 @@ private fun AppRoot(focusId: String?, focusToken: Int) {
                     exit = scaleOut(tween(Motion.DurExit)) + fadeOut(tween(Motion.DurExit))
                 ) {
                     CreateFab {
-                        navDirection = -1
                         editing = null
-                        page = Page.EDIT
+                        push(Page.EDIT)
                     }
                 }
             }
@@ -302,7 +347,7 @@ private fun AppRoot(focusId: String?, focusToken: Int) {
             val cancelExit = ExitTransition.None
 
             AnimatedContent(
-                targetState = page,
+                targetState = currentPage(),
                 transitionSpec = {
                     when {
                         // 二级页：从底部推入，盖在 Tab 之上
@@ -324,35 +369,31 @@ private fun AppRoot(focusId: String?, focusToken: Int) {
                     when (current) {
                             Page.SCHEDULE -> ScheduleScreen(
                                 state = state,
-                                onModeChange = vm::setMode,
                                 onFilterChange = vm::onSelectFilter,
                                 onPrevWeek = vm::onPrevWeek,
                                 onNextWeek = vm::onNextWeek,
                                 onThisWeek = vm::onBackToThisWeek,
                                 onToday = vm::onBackToToday,
-                                onPrevDay = { vm.onSelectDate(CoreDate.addDays(state.selectedDate, -1)) },
-                                onNextDay = { vm.onSelectDate(CoreDate.addDays(state.selectedDate, 1)) },
+                                onPrevDay = vm::onPrevDay,
+                                onNextDay = vm::onNextDay,
                                 onSelectDate = vm::onSelectDate,
                                 onItemClick = { item ->
-                                    navDirection = -1
                                     editing = item
-                                    page = Page.EDIT
+                                    push(Page.EDIT)
                                 },
                                 onToggleStar = vm::onToggleStar,
                                 onToggleConflict = vm::onToggleConflict,
                                 onCreateNew = {
-                                    navDirection = -1
                                     editing = null
-                                    page = Page.EDIT
+                                    push(Page.EDIT)
                                 }
                             )
 
                             Page.OVERVIEW -> OverviewScreen(
                                 items = items,
                                 onItemClick = { item ->
-                                    navDirection = -1
                                     editing = item
-                                    page = Page.EDIT
+                                    push(Page.EDIT)
                                 }
                             )
 
@@ -366,9 +407,7 @@ private fun AppRoot(focusId: String?, focusToken: Int) {
                                             else -> ScheduleFilter.ALL
                                         }
                                     )
-                                    navDirection = -1
-                                    tab = Tab.SCHEDULE
-                                    page = Page.SCHEDULE
+                                    switchTab(Tab.SCHEDULE)
                                 },
                                 onExport = { exportLauncher.launch(Backup.fileName()) },
                                 onImport = {
@@ -388,24 +427,14 @@ private fun AppRoot(focusId: String?, focusToken: Int) {
                                     } else {
                                         vm.onUpdate(editing!!, form)
                                     }
-                                    if (ok) {
-                                        navDirection = -1
-                                        editing = null
-                                        page = Page.SCHEDULE
-                                    }
+                                    if (ok) popPage()
                                     ok
                                 },
                                 onDelete = { item ->
                                     vm.onDelete(item)
-                                    navDirection = -1
-                                    editing = null
-                                    page = Page.SCHEDULE
+                                    popPage()
                                 },
-                                onBack = {
-                                    navDirection = -1
-                                    editing = null
-                                    page = if (tab == Tab.MINE) Page.MINE else Page.SCHEDULE
-                                },
+                                onBack = { popPage() },
                                 onRequestDiscard = { pendingDiscard = true }
                             )
                         }
@@ -436,29 +465,41 @@ private fun AppRoot(focusId: String?, focusToken: Int) {
         confirmText = "放弃修改",
         onConfirm = {
             pendingDiscard = false
-            navDirection = -1
-            editing = null
-            page = if (tab == Tab.MINE) Page.MINE else Page.SCHEDULE
+            popPage()
         },
         onDismiss = { pendingDiscard = false }
     )
 }
 
 /**
- * 底部导航（v2.2 重做）。
+ * 底部导航（v2.3 完全重做）。
  *
- * ## 旧版错位从哪来
+ * ## 为什么又重做了一次
  *
- * 1. 图标容器 48rpx、图标 44rpx —— 上下左右各 2rpx 不对称余量；
- * 2. 文字用 caption，行高 36rpx，而图标 44rpx；两者堆叠后整组高 92rpx，
- *    却在一个 112rpx 的轨道里靠顶排列，底部空出 20rpx，看起来「贴天不贴地」；
- * 3. 选中 / 未选中字重不同（Bold vs Normal），文字宽度随状态变化，居中时会左右抖。
+ * v2.1 是浮块指示器 + 弹性曲线，v2.2 是滑动下划线 + 细线分隔。两次都被
+ * 反馈「动画奇怪」/「错位」，根因其实不在动画参数上：
+ *
+ * 1. **指示器本身是多余的**。浮块/下划线都在描述「你选了哪个」，
+ *    而图标和文字已经用颜色说了一遍 —— 两套编码同时动，观众就会同时
+ *    盯两个东西，任何一点相位差都会被读成「抖」。
+ * 2. **视觉重量压在底栏**。120rpx 的实心浮块比页面里绝大多数元素都重，
+ *    底栏喧宾夺主。
+ * 3. **尺寸三套来源**：指示器的位置用手算 padding，图标用 48rpx 盒子，
+ *    文字用 28rpx 行高，三者只要改一处就错位。
  *
  * ## 现在
  *
- * 图标 48rpx 与文字行高 28rpx 之间固定 4rpx 间隙，整组用 `Arrangement.Center`
- * 垂直居中；字重恒定 SemiBold，只靠颜色区分；指示器是图标正下方的一条
- * 28×4rpx 圆头短线，位置由同一套尺寸算出来，不再手写 padding。
+ * 用**一行文字 + 一个图标**的状态变化来表达选中，不再有任何滑动指示器：
+ *
+ * * 选中项：图标变成品牌色 + 文字变成品牌色 + 字重 SemiBold + 图标从
+ *   InkMuted 渐变到 Brand（`animateFloatAsState` 只驱动颜色，不驱动尺寸，
+ *   所以永远不会出现「文字宽度变了导致居中抖」）；
+ * * 未选中项：InkSecondary，字重 Normal 但保持与 SemiBold **等宽**的
+ *   排版（同一档字号、同一行高），靠颜色区分。
+ *
+ * 布局只有一套尺寸推导：图标盒 `iconBox` → 间隙 `gap` → 文字行高
+ * `labelHeight`，整组 `Arrangement.Center` 落在 112rpx 的轨道里，
+ * 上下留白左右对称。分隔线仍是 2rpx，和卡片描边同一套线条语言。
  */
 @Composable
 private fun AppBottomBar(
@@ -467,8 +508,6 @@ private fun AppBottomBar(
     enabled: Boolean = true
 ) {
     val m = LocalMetrics.current
-    val reduced = LocalReducedMotion.current
-    val density = LocalDensity.current
     val tabs = Tab.values()
     val hairline = m.rpx(2)
 
@@ -486,53 +525,32 @@ private fun AppBottomBar(
             }
             .navigationBarsPadding()
     ) {
-        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            val cellWidth = maxWidth / tabs.size
-            val barHeight = m.rpx(120)
-            val iconBox = m.rpx(48)
-            val labelHeight = m.rpx(28)
-            val gap = m.rpx(4)
-            val markW = m.rpx(28)
-            val markH = m.rpx(4)
-            // 指示器贴在整组内容的下沿，位置由同一套尺寸推导
-            val groupH = iconBox + gap + labelHeight
-            val markTop = (barHeight - groupH) / 2 + groupH - markH
-
-            val index = tabs.indexOf(selected)
-            val target = cellWidth * index.toFloat() + (cellWidth - markW) / 2
-            val slideDp = animateFloatAsState(
-                targetValue = target.value,
-                animationSpec = Motion.tab(reduced),
-                label = "tabUnderline"
-            )
-            val slidePx = with(density) { slideDp.value.dp.toPx() }
-
-            Box(modifier = Modifier.fillMaxWidth().height(barHeight)) {
-                Box(
-                    modifier = Modifier
-                        .padding(top = markTop)
-                        .width(markW)
-                        .height(markH)
-                        .graphicsLayer { translationX = slidePx }
-                        .clip(RoundedCornerShape(markH / 2))
-                        .background(Tokens.Brand)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(m.rpx(112)),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            tabs.forEach { item ->
+                BottomTabItem(
+                    tab = item,
+                    active = item == selected,
+                    enabled = enabled,
+                    onClick = { onSelect(item) },
+                    modifier = Modifier.weight(1f)
                 )
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    tabs.forEach { item ->
-                        BottomTabItem(
-                            tab = item,
-                            active = item == selected,
-                            enabled = enabled,
-                            onClick = { onSelect(item) },
-                            modifier = Modifier.width(cellWidth).height(barHeight)
-                        )
-                    }
-                }
             }
         }
     }
 }
 
+/**
+ * 单个 Tab。
+ *
+ * 高度锚定在父级给的 112rpx 上（`fillMaxHeight` 而不是自算），
+ * 图标盒与文字行高固定，两者之间 6rpx —— 这是整套里唯一的几何常数，
+ * 改字号也不会推动图标。
+ */
 @Composable
 private fun BottomTabItem(
     tab: Tab,
@@ -545,24 +563,29 @@ private fun BottomTabItem(
     val reduced = LocalReducedMotion.current
     val interaction = rememberPressInteraction()
 
-    // 只做颜色过渡：字重恒定 → 文字宽度不变 → 居中不会抖
+    // 只做颜色过渡：尺寸/字宽恒定 → 居中不会抖
     val blend = animateFloatAsState(
         targetValue = if (active) 1f else 0f,
         animationSpec = Motion.fast(reduced),
         label = "tabBlend"
     )
-    val tint = lerp(Tokens.InkMuted, Tokens.Brand, blend.value)
+    val tint = lerp(Tokens.InkSecondary, Tokens.Brand, blend.value)
+    val shape = RoundedCornerShape(m.radiusMd)
 
     Column(
-        modifier = modifier.rippleClick(interaction, enabled = enabled, onClick = onClick),
+        modifier = modifier
+            .fillMaxHeight()
+            .padding(horizontal = m.rpx(8), vertical = m.rpx(6))
+            .clip(shape)
+            .pressHighlight(interaction, shape, enabled = enabled)
+            .clickableNoRipple(interaction, enabled = enabled, onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         Box(
-            modifier = Modifier.size(m.rpx(48)),
+            modifier = Modifier.size(m.rpx(44)),
             contentAlignment = Alignment.Center
         ) {
-            // 让 Icon 撑满容器自己居中，比手算 padding 更不容易错位
             Icon(
                 painter = painterResource(tab.iconRes),
                 contentDescription = null,
@@ -572,14 +595,13 @@ private fun BottomTabItem(
         }
         Text(
             text = tab.label,
-            // 行高与 groupH 里的 labelHeight(28rpx) 完全一致
             style = m.micro.copy(
                 fontSize = m.sp(24),
-                lineHeight = m.sp(28),
+                lineHeight = m.sp(30),
                 color = tint,
-                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                fontWeight = FontWeight.SemiBold
             ),
-            modifier = Modifier.padding(top = m.rpx(4)),
+            modifier = Modifier.padding(top = m.rpx(6)),
             maxLines = 1
         )
     }

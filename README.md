@@ -467,7 +467,52 @@ node -e "const d=require('./miniprogram/utils/date.js'); console.log(d.isoWeekNu
 
 ---
 
-## 十三、下一步（可选增强）
+## 十三、v2.3 日程页与底栏重做
+
+### 反馈与处理
+
+| 反馈 | 根因 | 处理 |
+| --- | --- | --- |
+| 「完全重做日程」 | 旧结构是「报头 + 课表/时间轴分段 + 单一滚动容器」，时间轴只是卡片列表，看不出「一天长什么样」；周与月两种时间带混在一个开关里，语义不清 | 拆成三层：报头（周次 + 今天）/ 时间带（**周条 / 月历** 二选一）/ 内容（**课表 / 时间轴** 二选一）。时间轴换成真实时间刻度的 [TodayTimeline]，上方周条、月历都能直接点日期 |
+| 「完全重做底部栏」 | 浮块指示器（v2.1）与滑动下划线（v2.2）都在描述「你选了哪个」，而图标与文字已经用颜色说了一遍 —— 两套编码同时动，观众同时盯两个东西，任何相位差都会被读成「抖」 | 取消所有指示器。选中项只用颜色 + 字重表达，`animateFloatAsState` 只驱动颜色不驱动尺寸，永远不会出现「文字宽度变了导致居中抖」 |
+| 「返回时只返回上一级」 | `BackHandler(enabled = tab != SCHEDULE)` 直接 `tab = SCHEDULE; page = SCHEDULE`，从「我的」按返回一步跨回日程首页；编辑页的返回也硬编码回日程页 | 引入真正的返回栈 `mutableStateListOf<Page>`：进二级页压栈、返回弹一层，弹出来的目标页决定 tab 高亮；编辑页从「概况」进来就返回「概况」 |
+
+### 日程页新结构
+
+```
+MastheadBlock   日程 / 第 N 周 · N 个日程 / [今天]
+ScopeSwitch     周 ─── 月
+WeekStrip       一周七天的圆点条（左右翻周，非本周显示「回到本周」）
+  或 MonthCalendar  6×7 月历，点任意一天
+WeekModeContent     课表（原 WeekGrid，保留分段映射的当前时间线）
+  或 TimelineModeContent  按真实时刻排布的时间轴 + 当日条目
+```
+
+- 时间轴的范围不是固定 0–24 点，而是取当天最早/最晚事件各向外扩一小时，最少 4 小时 —— 否则学生的一天只会挤在中间几十像素里。
+- `HorizontalPager` 以「今天」为第 180 页，前后各 180 天。外部日期变了就直接 `scrollToPage`，用户滑动停下再把页码换算回日期；用 `lastSyncedPage` 切断回环。
+- 小时刻度线用一次 `drawBehind` 画完（整根轴只有 1 个可绘制节点），事件块用 `graphicsLayer { translationY }` 定位而非 `offset`（后者会重跑布局）。
+
+### 底栏新结构
+
+`112rpx` 轨道 + 三个等宽条目；图标 `44rpx`、文字 `m.micro`（24rpx / 行高 30rpx）、两者间距 `6rpx`，整组垂直居中。选中项 `InkSecondary → Brand`、字重恒定 SemiBold，未选中 `InkSecondary`。顶部仍是 2rpx 分隔线，和卡片描边同一套线条语言。
+
+### 代码侧改动
+
+- `MainActivity.kt`：`pageStack` 返回栈 + `push` / `switchTab` / `popPage` 三个导航原语；`Tab.toPage()` / `Page.tabOrDefault()`；`AppBottomBar` 与 `BottomTabItem` 整段重写。
+- `ui/screens/ScheduleScreen.kt`：整体重写（报头 / 时间带 / 内容三层）。
+- `ui/components/Agenda.kt`（新增）：`WeekStrip` / `TodayTimeline` / `TimelineTimeRail` / `TimelineDayCell`。
+- `core/CoreDate.kt`：新增 `startOfMonth` / `startOfNextMonth` / `isSameMonth` / `monthCells`（固定 42 格、周一开头）/ `daysBetween`。
+- `ui/ScheduleViewModel.kt`：导航信号拆成「周起点」与「选中日」两个独立状态，`onPrevWeek` 不再顺手改选中日；新增 `todayStart()`。
+- `app/build.gradle.kts`：模块级 `-opt-in=androidx.compose.foundation.ExperimentalFoundationApi`（Compose 1.6 的 `HorizontalPager` 仍是实验 API），`versionCode 8` / `versionName 2.3.0`。
+
+### 回归
+
+- `gradle assembleDebug testDebugUnitTest`：BUILD SUCCESSFUL。
+- 单测：`CoreDateTest` 13 / `CoreConflictTest` 7 / `CoreValidatorsTest` 11 / `UiRegressionGuardTest` 4，共 35 个，0 失败。
+
+---
+
+## 十四、下一步（可选增强）
 
 - 重复日程规则（每周 / 每月 / 工作日）
 - 首页小组件（今日日程）

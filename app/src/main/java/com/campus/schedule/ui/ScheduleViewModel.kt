@@ -75,6 +75,20 @@ data class ScheduleUiState(
     /** 冲突条文案。 */
     val conflictText: String
         get() = if (conflictPairs.isEmpty()) "" else "${conflictPairs.size} 个日程时间重叠"
+
+    /** 今天零点 —— 时间轴分页以它为原点，避免每天重算。 */
+    fun todayStart(): Long = CoreDate.startOfDay(System.currentTimeMillis())
+
+    /**
+     * 时间轴是否「正跟随所选日期」。
+     *
+     * 时间轴按天显示，日期来源只有一个：[selectedDate]。当用户从周条/月历
+     * 或左右箭头指定了某一天，时间轴必须直接显示那一天 —— 这是**同一级**
+     * 的日期变化，不该再叠加一层翻页动画，否则会出现「先横移再竖移」的
+     * 双重位移。这个属性捕获的就是这段同步期。
+     */
+    val isTimelineFollowsSelection: Boolean
+        get() = mode != ScheduleMode.WEEK
 }
 
 /**
@@ -140,38 +154,81 @@ class ScheduleViewModel(
         _uiState.value = _uiState.value.copy(conflictPairs = pairs)
     }
 
+    // ------------------------------------------------------------------
+    // 导航信号（v2.3）
+    //
+    // 以前「翻周」和「换天」绑在一起：翻周会把 selectedDate 重置到周一，
+    // 于是从时间轴（按天）翻到课表（按周）时页面会跳两下。现在拆成两个
+    // 互不干涉的信号 —— 见 ScheduleScreen 的类注释。
+    // ------------------------------------------------------------------
+
     fun onPrevWeek() = shiftWeek(-7)
 
     fun onNextWeek() = shiftWeek(7)
 
+    /** 翻周：只动 weekStart，**不**改 selectedDate。 */
     private fun shiftWeek(days: Int) {
+        val now = System.currentTimeMillis()
         val weekStart = CoreDate.addDays(_uiState.value.weekStart, days)
-        applyWeekState(weekStart, CoreDate.startOfDay(weekStart))
+        _uiState.value = _uiState.value.copy(
+            weekStart = weekStart,
+            isCurrentWeek = weekStart == CoreDate.startOfWeek(now)
+        )
+        recomputeConflicts()
     }
 
-    /** 回到本周（选中周一）。 */
+    /** 回到本周：只把 weekStart 拉回，选中日期保持不变。 */
     fun onBackToThisWeek() {
         val now = System.currentTimeMillis()
         val weekStart = CoreDate.startOfWeek(now)
-        applyWeekState(weekStart, CoreDate.startOfDay(weekStart))
+        _uiState.value = _uiState.value.copy(
+            weekStart = weekStart,
+            isCurrentWeek = true,
+            selectedDate = _uiState.value.selectedDate
+        )
+        recomputeConflicts()
     }
 
-    /** 回到今天。 */
+    /** 回到今天：周和日一起归位 —— 这是唯一允许同时改动两个信号的入口。 */
     fun onBackToToday() {
         val now = System.currentTimeMillis()
-        val weekStart = CoreDate.startOfWeek(now)
-        applyWeekState(weekStart, CoreDate.startOfDay(now))
+        applyWeekState(CoreDate.startOfWeek(now), CoreDate.startOfDay(now))
     }
 
+    fun onPrevDay() {
+        selectDay(CoreDate.addDays(_uiState.value.selectedDate, -1))
+    }
+
+    fun onNextDay() {
+        selectDay(CoreDate.addDays(_uiState.value.selectedDate, 1))
+    }
+
+    /**
+     * 选中某一天。
+     *
+     * * 时间轴模式：只改 selectedDate，不动 weekStart。
+     * * 课表模式：同时把 weekStart 对齐到那一天所在周 —— 用户在课表里
+     *   从月历点了 14 号，课表就该翻到 14 号那一周，否则选中的高亮
+     *   根本不在当前屏幕上。这是一次「同一级」的位移，不是跳级。
+     */
     fun onSelectDate(timestamp: Long) {
+        selectDay(timestamp)
+    }
+
+    private fun selectDay(timestamp: Long) {
         val now = System.currentTimeMillis()
         val day = CoreDate.startOfDay(timestamp)
-        _uiState.value = _uiState.value.copy(
+        val state = _uiState.value
+        val sameWeek = CoreDate.startOfWeek(day) == state.weekStart
+        val nextWeekStart = if (state.mode == ScheduleMode.WEEK) CoreDate.startOfWeek(day) else state.weekStart
+        _uiState.value = state.copy(
             selectedDate = day,
+            weekStart = nextWeekStart,
+            isCurrentWeek = nextWeekStart == CoreDate.startOfWeek(now),
             // 「今天」按钮的高亮要跟随所选日期变化
             isTodaySelected = CoreDate.isSameDay(day, now)
         )
-        recomputeConflicts()
+        if (!sameWeek) recomputeConflicts()
     }
 
     private fun applyWeekState(weekStart: Long, selectedDate: Long) {

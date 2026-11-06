@@ -184,6 +184,15 @@ object CoreDate {
     fun daysUntil(targetTs: Long, nowTs: Long): Int =
         Math.round((startOfDay(targetTs) - startOfDay(nowTs)).toDouble() / DAY).toInt()
 
+    /**
+     * 两个时间点之间相差几个自然日（后者减前者）。
+     *
+     * 返回 Long：日期翻页控件要拿它算「相对今天第几页」，用 Int 会在
+     * 极端值上溢出，也会和 addDays(Int) 混用时反复转来转去。
+     */
+    fun daysBetween(fromTs: Long, toTs: Long): Long =
+        (startOfDay(toTs) - startOfDay(fromTs)) / DAY
+
     fun deadlineText(endTime: Long, nowTs: Long): String {
         val diff = daysUntil(endTime, nowTs)
         return when {
@@ -222,4 +231,45 @@ object CoreDate {
     fun isToday(ts: Long, nowTs: Long): Boolean = isSameDay(ts, nowTs)
 
     fun isPast(ts: Long, nowTs: Long): Boolean = toNumber(ts) < nowTs
+
+    // ---------------------------------------------------------------------
+    // 月视图支持（v2.3 新增）
+    // ---------------------------------------------------------------------
+
+    /** 当月 1 号 00:00。 */
+    fun startOfMonth(ts: Long): Long {
+        val d = utcView(ts)
+        return makeTimestamp(d.get(Calendar.YEAR), d.get(Calendar.MONTH), 1)
+    }
+
+    /** 下个月 1 号 00:00（跨年自动进位）。 */
+    fun startOfNextMonth(ts: Long): Long {
+        val d = utcView(startOfMonth(ts))
+        return makeTimestamp(d.get(Calendar.YEAR), d.get(Calendar.MONTH) + 1, 1)
+    }
+
+    /** 两个时间戳是否落在同一个月的同一年。 */
+    fun isSameMonth(a: Long, b: Long): Boolean {
+        val pa = parts(a)
+        val pb = parts(b)
+        return pa.year == pb.year && pa.month == pb.month
+    }
+
+    /**
+     * 月历网格：固定 6 行 × 7 列 = 42 格，周一开头。
+     *
+     * 行数固定是刻意的 —— 无论当月需要 5 行还是 6 行，月历高度都不变，
+     * 点月份切换时下方内容不会跟着上下跳。
+     * 属于本月之外的位置为 `null`，渲染成空白占位。
+     */
+    fun monthCells(monthStart: Long): List<Long?> {
+        val start = startOfMonth(monthStart)
+        val lead = getWeekdayIndex(start)
+        val nextMonth = startOfNextMonth(start)
+        val totalDays = Math.round((nextMonth - start).toDouble() / DAY).toInt()
+        return (0 until 42).map { i ->
+            val dayIndex = i - lead
+            if (dayIndex < 0 || dayIndex >= totalDays) null else start + dayIndex * DAY
+        }
+    }
 }

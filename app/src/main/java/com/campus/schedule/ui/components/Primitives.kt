@@ -61,6 +61,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.animation.core.animateFloatAsState
 import com.campus.schedule.ui.icons.AppIcons
+import com.campus.schedule.ui.theme.DarkTokens
+import com.campus.schedule.ui.theme.LocalIsDark
 import com.campus.schedule.ui.theme.LocalMetrics
 import com.campus.schedule.ui.theme.LocalPalette
 import com.campus.schedule.ui.theme.LocalReducedMotion
@@ -368,6 +370,12 @@ fun MetaLine(
  * 3. 左侧一条 `4rpx` 的纸色竖条（`accent`），只在调用方显式传色时出现。
  *
  * @param accent 可选的左侧竖条颜色，传 null 则不出竖条
+ *
+ * v2.7 游戏化卡片：贴纸感 + 手绘虚线边框。
+ *
+ * - 去掉细实线描边，改为 3rpx 虚线（dashInterval=12rpx, gapInterval=8rpx）
+ * - 加 4rpx offset 阴影（drawBehind 画偏移矩形），营造「贴纸浮起」感
+ * - 保留 accent 左侧色条功能
  */
 @Composable
 fun PaperCard(
@@ -378,18 +386,58 @@ fun PaperCard(
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit
 ) {
     val m = LocalMetrics.current
+    val p = LocalPalette.current
+    val isDark = LocalIsDark.current
     val shape = RoundedCornerShape(m.radiusLg)
     val interaction = rememberPressInteraction()
+
+    // v2.7：深色模式色值
+    val bgColor = if (isDark) DarkTokens.PaperRaised else Tokens.PaperRaised
+    val lineColor = if (isDark) DarkTokens.Line else Tokens.Line
+    val shadowColor = if (isDark) Color(0x40000000) else Color(0x1A000000)
 
     var base = modifier
         .fillMaxWidth()
         .clip(shape)
-        .background(Tokens.PaperRaised)
-        .border(m.rpx(2), Tokens.Line, shape)
+        .background(bgColor)
+        // v2.7：手绘虚线边框 + 贴纸阴影
+        .drawBehind {
+            // 贴纸阴影：向右下偏移 4rpx
+            val offset = m.rpx(4).toPx()
+            val r = m.radiusLg.toPx()
+            drawRoundRect(
+                color = shadowColor,
+                topLeft = androidx.compose.ui.geometry.Offset(offset, offset),
+                size = size,
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(r, r)
+            )
+            // 手绘虚线边框
+            val dashLen = m.rpx(12).toPx()
+            val gapLen = m.rpx(8).toPx()
+            val strokeW = m.rpx(3).toPx()
+            val path = androidx.compose.ui.graphics.Path().apply {
+                addRoundRect(
+                    androidx.compose.ui.geometry.RoundRect(
+                        left = 0f, top = 0f, right = size.width, bottom = size.height,
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(r, r)
+                    )
+                )
+            }
+            val measure = androidx.compose.ui.graphics.PathMeasure().apply { setPath(path, false) }
+            val totalLen = measure.length
+            var pos = 0f
+            while (pos < totalLen) {
+                val segEnd = minOf(pos + dashLen, totalLen)
+                val segment = androidx.compose.ui.graphics.Path()
+                measure.getSegment(pos, segEnd, segment, startWithMoveTo = true)
+                drawPath(segment, lineColor, style = androidx.compose.ui.graphics.drawscope.Stroke(strokeW))
+                pos += dashLen + gapLen
+            }
+        }
 
     if (accent != null) {
         base = base.drawBehind {
-            val w = m.rpx(4).toPx()
+            val w = m.rpx(6).toPx()
             val half = m.rpx(14).toPx()
             drawRoundRect(
                 color = accent,
@@ -529,29 +577,66 @@ fun AppButton(
         modifier
     }
 
+    // v2.7：深色模式色值
+    val isDark = LocalIsDark.current
+    val paperRaised = if (isDark) DarkTokens.PaperRaised else Tokens.PaperRaised
+    val lineStrong = if (isDark) DarkTokens.LineStrong else Tokens.LineStrong
+
     Row(
         modifier = buttonModifier
             .heightIn(min = minHeight)
             .clip(shape)
             .then(
                 when (style) {
-                    ButtonStyle.PRIMARY -> Modifier.background(p.brandGradient)
-                    // 次要按钮改用「纸色 + 2rpx 墨线」，和卡片同一套线条语言；
-                    // 原来用 PaperTint 描边，白底上几乎看不见。
+                    // v2.7 游戏化：PRIMARY 改纯色+阴影代替渐变，更活泼
+                    ButtonStyle.PRIMARY -> Modifier
+                        .background(p.brand)
+                        .drawBehind {
+                            val offset = m.rpx(3).toPx()
+                            val r = m.radiusMd.toPx()
+                            drawRoundRect(
+                                color = p.brandDeep.copy(alpha = 0.35f),
+                                topLeft = androidx.compose.ui.geometry.Offset(offset, offset),
+                                size = size,
+                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(r, r)
+                            )
+                        }
+                    // v2.7 游戏化：SECONDARY 改虚线边框
                     ButtonStyle.SECONDARY -> Modifier
-                        .background(Tokens.PaperRaised)
-                        .border(m.rpx(2), Tokens.LineStrong, shape)
+                        .background(paperRaised)
+                        .drawBehind {
+                            val dashLen = m.rpx(10).toPx()
+                            val gapLen = m.rpx(6).toPx()
+                            val strokeW = m.rpx(2).toPx()
+                            val r = m.radiusMd.toPx()
+                            val path = androidx.compose.ui.graphics.Path().apply {
+                                addRoundRect(
+                                    androidx.compose.ui.geometry.RoundRect(
+                                        left = 0f, top = 0f, right = size.width, bottom = size.height,
+                                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(r, r)
+                                    )
+                                )
+                            }
+                            val measure = androidx.compose.ui.graphics.PathMeasure().apply { setPath(path, false) }
+                            val totalLen = measure.length
+                            var pos = 0f
+                            while (pos < totalLen) {
+                                val segEnd = minOf(pos + dashLen, totalLen)
+                                val segment = androidx.compose.ui.graphics.Path()
+                                measure.getSegment(pos, segEnd, segment, startWithMoveTo = true)
+                                drawPath(segment, lineStrong, style = androidx.compose.ui.graphics.drawscope.Stroke(strokeW))
+                                pos += dashLen + gapLen
+                            }
+                        }
                     ButtonStyle.GHOST -> Modifier
                     ButtonStyle.DANGER -> Modifier
                         .background(Tokens.DangerTint)
                         .border(m.rpx(2), Tokens.Danger.copy(alpha = 0.24f), shape)
-                    ButtonStyle.DISABLED -> Modifier.background(Tokens.PaperSunken)
+                    ButtonStyle.DISABLED -> Modifier.background(if (isDark) DarkTokens.PaperSunken else Tokens.PaperSunken)
                 }
             )
             .pressHighlight(interaction, shape, enabled = !disabled)
             .rippleClick(interaction, enabled = !disabled, onClick = onClick)
-            // 上下内边距 14rpx + 文字行高 46/40，块高落在 96~100rpx；
-            // 之前上下各 16 会顶到 minHeight，文字在按钮里偏下（行高留白不对称）
             .padding(horizontal = padH, vertical = m.rpx(12)),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically

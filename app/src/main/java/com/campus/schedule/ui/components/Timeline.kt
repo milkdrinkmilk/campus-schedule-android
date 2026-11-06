@@ -28,6 +28,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.campus.schedule.ui.icons.AppIcons
+import com.campus.schedule.ui.theme.DarkTokens
+import com.campus.schedule.ui.theme.LocalIsDark
 import com.campus.schedule.ui.theme.LocalMetrics
 import com.campus.schedule.ui.theme.LocalPalette
 import com.campus.schedule.ui.theme.Motion
@@ -157,6 +159,12 @@ private fun NavArrowButton(
  *   小印章给点趣味，底部 2rpx 虚线像手撕便签的齿孔。
  * - 三个 Tab 各自有不同的装饰语言：日程页是便签，概况页是数据面板，
  *   我的页是身份卡 —— 视觉上不再「三页长得一样」。
+ *
+ * v2.7 游戏化任务卡：
+ * - 左侧大 emoji 图标（替代时间槽）
+ * - 右侧进度条/状态徽章
+ * - 贴纸感卡片 + 手绘虚线边框
+ * - 底部经验值装饰线
  */
 @Composable
 fun TimelineRow(
@@ -168,6 +176,7 @@ fun TimelineRow(
 ) {
     val m = LocalMetrics.current
     val p = LocalPalette.current
+    val isDark = LocalIsDark.current
     val interaction = rememberPressInteraction()
 
     val accentColor = Tokens.accentColor(entry.accent)
@@ -176,7 +185,15 @@ fun TimelineRow(
     val ongoing = entry.statusTone == TagTone.ONGOING
     val ended = entry.statusTone == TagTone.ENDED
 
-    // 玩梗：根据状态选一个 emoji 印章，让列表不那么「工具感」
+    // v2.7：深色模式色值
+    val bgColor = if (isDark) DarkTokens.PaperRaised else Tokens.PaperRaised
+    val inkColor = if (isDark) DarkTokens.Ink else Tokens.Ink
+    val inkSecColor = if (isDark) DarkTokens.InkSecondary else Tokens.InkSecondary
+    val inkMutedColor = if (isDark) DarkTokens.InkMuted else Tokens.InkMuted
+    val lineColor = if (isDark) DarkTokens.Line else Tokens.Line
+    val shadowColor = if (isDark) Color(0x40000000) else Color(0x1A000000)
+
+    // 玩梗：根据状态选一个 emoji 印章
     val moodEmoji = when {
         ongoing -> "🔥"
         entry.conflict -> "⚠️"
@@ -185,145 +202,161 @@ fun TimelineRow(
         else -> "📌"
     }
 
+    // v2.7：状态徽章文案
+    val badgeText = when {
+        ongoing -> "进行中"
+        ended -> "已完成"
+        entry.conflict -> "冲突"
+        else -> "待办"
+    }
+    val badgeColor = when {
+        ongoing -> p.brand
+        ended -> Tokens.Sage
+        entry.conflict -> Tokens.Gold
+        else -> accentColor
+    }
+
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(m.radiusMd))
-            .background(accentTint.copy(alpha = if (ongoing) 0.55f else 0.28f))
+            .clip(RoundedCornerShape(m.radiusLg))
+            .background(bgColor)
+            // v2.7：贴纸阴影 + 手绘虚线边框
             .drawBehind {
-                // 左侧色条：4rpx 圆头竖线，比 v2.4.1 的 6rpx 细一点，更精致
-                val barW = m.rpx(4).toPx()
-                val barInset = m.rpx(10).toPx()
+                // 贴纸阴影
+                val offset = m.rpx(4).toPx()
+                val r = m.radiusLg.toPx()
                 drawRoundRect(
-                    color = accentColor,
-                    topLeft = androidx.compose.ui.geometry.Offset(barInset, barInset),
-                    size = androidx.compose.ui.geometry.Size(
-                        barW,
-                        (size.height - barInset * 2).coerceAtLeast(0f)
-                    ),
-                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(barW / 2f, barW / 2f)
+                    color = shadowColor,
+                    topLeft = androidx.compose.ui.geometry.Offset(offset, offset),
+                    size = size,
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(r, r)
                 )
-                // 底部虚线：手撕便签的齿孔感，比实线有趣
-                if (showDivider) {
-                    val dashW = m.rpx(8).toPx()
-                    val gapW = m.rpx(6).toPx()
-                    val y = size.height - m.rpx(1).toPx()
-                    var x = 0f
-                    while (x < size.width) {
-                        drawRect(
-                            color = Tokens.Line,
-                            topLeft = androidx.compose.ui.geometry.Offset(x, y),
-                            size = androidx.compose.ui.geometry.Size(dashW, m.rpx(1).toPx())
+                // 手绘虚线边框
+                val dashLen = m.rpx(12).toPx()
+                val gapLen = m.rpx(8).toPx()
+                val strokeW = m.rpx(3).toPx()
+                val path = androidx.compose.ui.graphics.Path().apply {
+                    addRoundRect(
+                        androidx.compose.ui.geometry.RoundRect(
+                            left = 0f, top = 0f, right = size.width, bottom = size.height,
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(r, r)
                         )
-                        x += dashW + gapW
-                    }
+                    )
+                }
+                val measure = androidx.compose.ui.graphics.PathMeasure().apply { setPath(path, false) }
+                val totalLen = measure.length
+                var pos = 0f
+                while (pos < totalLen) {
+                    val segEnd = minOf(pos + dashLen, totalLen)
+                    val segment = androidx.compose.ui.graphics.Path()
+                    measure.getSegment(pos, segEnd, segment, startWithMoveTo = true)
+                    drawPath(segment, lineColor, style = androidx.compose.ui.graphics.drawscope.Stroke(strokeW))
+                    pos += dashLen + gapLen
+                }
+                // 底部经验值装饰线
+                if (showDivider) {
+                    val decoY = size.height - m.rpx(6).toPx()
+                    val decoW = size.width * 0.6f
+                    drawRoundRect(
+                        color = accentTint.copy(alpha = 0.5f),
+                        topLeft = androidx.compose.ui.geometry.Offset(m.rpx(24).toPx(), decoY),
+                        size = androidx.compose.ui.geometry.Size(decoW, m.rpx(3).toPx()),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(m.rpx(1.5f).toPx())
+                    )
                 }
             }
             .then(
                 if (entry.conflict) {
                     Modifier.border(
-                        width = m.rpx(2),
+                        width = m.rpx(3),
                         color = Tokens.Gold,
-                        shape = RoundedCornerShape(m.radiusMd)
+                        shape = RoundedCornerShape(m.radiusLg)
                     )
                 } else {
                     Modifier
                 }
             )
-            .pressHighlight(interaction, RoundedCornerShape(m.radiusMd))
+            .pressHighlight(interaction, RoundedCornerShape(m.radiusLg))
             .clickableNoRipple(interaction, onClick = onClick)
             .padding(
-                start = m.rpx(28),
-                end = m.rpx(18),
-                top = m.rpx(20),
-                bottom = m.rpx(20)
+                start = m.rpx(24),
+                end = m.rpx(20),
+                top = m.rpx(22),
+                bottom = m.rpx(22)
             ),
-        verticalAlignment = Alignment.Top
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        // ---- 时间槽 ----
-        Column(
-            modifier = Modifier.width(m.rpx(128)),
-            horizontalAlignment = Alignment.End
+        // ---- 左侧大 emoji ----
+        Box(
+            modifier = Modifier
+                .size(m.rpx(72))
+                .clip(CircleShape)
+                .background(accentTint.copy(alpha = 0.4f)),
+            contentAlignment = Alignment.Center
         ) {
             Text(
-                text = entry.timeText,
-                style = m.numeric.copy(
-                    fontSize = m.sp(30),
-                    lineHeight = m.sp(46),
-                    color = when {
-                        ongoing -> p.brandDeep
-                        ended -> Tokens.InkFaint
-                        else -> accentText
-                    },
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
-                ),
-                maxLines = 1
+                text = moodEmoji,
+                style = m.displayL.copy(fontSize = m.sp(36))
             )
-            if (entry.endText.isNotBlank()) {
-                Text(
-                    text = entry.endText,
-                    style = m.numeric.copy(
-                        fontSize = m.sp(24),
-                        lineHeight = m.sp(32),
-                        color = Tokens.InkMuted
-                    ),
-                    modifier = Modifier.padding(top = m.rpx(2)),
-                    maxLines = 1
-                )
-            }
         }
 
-        // ---- 正文 ----
+        // ---- 中间正文 ----
         Column(
             modifier = Modifier
                 .weight(1f)
-                .padding(start = m.rpx(24)),
+                .padding(horizontal = m.rpx(18)),
             verticalArrangement = Arrangement.spacedBy(m.rpx(6))
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(m.rpx(10)),
-                verticalAlignment = Alignment.Bottom
-            ) {
-                Text(
-                    text = entry.title,
-                    style = m.bodyLg.copy(
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
-                        lineHeight = m.sp(46),
-                        color = if (ended) Tokens.InkSecondary else Tokens.Ink
-                    ),
-                    modifier = Modifier.weight(1f),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                // emoji 印章：比纯文字状态更有「人味」
-                Text(
-                    text = moodEmoji,
-                    style = m.meta.copy(fontSize = m.sp(28), lineHeight = m.sp(36)),
-                    modifier = Modifier.padding(bottom = m.rpx(2))
-                )
-            }
+            Text(
+                text = entry.title,
+                style = m.bodyLg.copy(
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    lineHeight = m.sp(46),
+                    color = if (ended) inkSecColor else inkColor
+                ),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
 
-            // 状态 + 详情合并成一行，减少视觉层级
+            // 时间 + 地点合并
             val detailParts = listOfNotNull(
-                entry.status.takeIf { it.isNotBlank() },
-                entry.meta.takeIf { it.isNotBlank() },
+                entry.timeText.takeIf { it.isNotBlank() },
                 entry.location.takeIf { it.isNotBlank() }
             )
             if (detailParts.isNotEmpty()) {
                 Text(
                     text = detailParts.joinToString(" · "),
-                    style = m.caption.copy(
-                        color = if (ongoing) p.brandDeep else Tokens.InkSecondary
-                    ),
+                    style = m.caption.copy(color = inkMutedColor),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
         }
 
-        if (onToggleStar != null) {
-            Box(modifier = Modifier.padding(start = m.rpx(4), top = m.rpx(4))) {
+        // ---- 右侧状态徽章 ----
+        Column(
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(m.rpx(6))
+        ) {
+            // 状态徽章
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(m.radiusSm))
+                    .background(badgeColor.copy(alpha = 0.15f))
+                    .padding(horizontal = m.rpx(14), vertical = m.rpx(6))
+            ) {
+                Text(
+                    text = badgeText,
+                    style = m.caption.copy(
+                        color = badgeColor,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                    )
+                )
+            }
+
+            // 星标按钮
+            if (onToggleStar != null) {
                 StarButton(starred = entry.starred, onClick = onToggleStar)
             }
         }

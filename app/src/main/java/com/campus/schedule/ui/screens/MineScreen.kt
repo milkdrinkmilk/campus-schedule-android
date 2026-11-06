@@ -1,21 +1,30 @@
 package com.campus.schedule.ui.screens
 
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.campus.schedule.core.CoreDate
 import com.campus.schedule.data.ScheduleItem
@@ -24,13 +33,17 @@ import com.campus.schedule.ui.components.EntryList
 import com.campus.schedule.ui.components.EntryRow
 import com.campus.schedule.ui.components.IdentityCard
 import com.campus.schedule.ui.components.Masthead
+import com.campus.schedule.ui.components.PaperCard
 import com.campus.schedule.ui.components.SectionHeader
 import com.campus.schedule.ui.components.StatsRow
 import com.campus.schedule.ui.components.TagTone
 import com.campus.schedule.ui.components.rememberEnterTracker
 import com.campus.schedule.ui.components.staggerEnter
 import com.campus.schedule.ui.icons.AppIcons
+import com.campus.schedule.ui.theme.LocalIsDark
 import com.campus.schedule.ui.theme.LocalMetrics
+import com.campus.schedule.ui.theme.LocalPalette
+import com.campus.schedule.ui.theme.Palettes
 import com.campus.schedule.ui.theme.Tokens
 
 /**
@@ -48,6 +61,11 @@ fun MineScreen(
     onImport: () -> Unit,
     onClearSamples: () -> Unit,
     onClearAll: () -> Unit,
+    // v2.7：偏好回调
+    selectedPaletteIndex: Int? = null,
+    isDarkMode: Boolean = false,
+    onSelectPalette: (Int?) -> Unit = {},
+    onToggleDarkMode: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val m = LocalMetrics.current
@@ -182,13 +200,125 @@ fun MineScreen(
             }
         }
 
+        // ---------- v2.7 外观设置 ----------
+        item(key = "sec-appearance") {
+            SectionHeader(
+                eyebrow = "🎨 外观",
+                title = "外观设置",
+                modifier = Modifier
+                    .staggerEnter(tracker, "sec-appearance", 6)
+                    .padding(top = m.rpx(48))
+            )
+        }
+
+        item(key = "appearance-card") {
+            PaperCard(
+                modifier = Modifier.staggerEnter(tracker, "appearance-card", 7),
+                contentPadding = m.rpx(28)
+            ) {
+                // 色板选择器
+                Text(
+                    text = "主题色",
+                    style = m.bodyLg.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+                )
+                Spacer(Modifier.height(m.rpx(16)))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(m.rpx(16)),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Palettes.all.forEachIndexed { index, palette ->
+                        val isSelected = selectedPaletteIndex == index
+                        val size = if (isSelected) m.rpx(56) else m.rpx(44)
+                        Box(
+                            modifier = Modifier
+                                .size(size)
+                                .animateContentSize(tween(200))
+                                .clip(CircleShape)
+                                .background(palette.brand)
+                                .then(
+                                    if (isSelected) Modifier.border(m.rpx(3), Color.White, CircleShape)
+                                    else Modifier
+                                )
+                                .clickable { onSelectPalette(index) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (isSelected) {
+                                Text(
+                                    text = "✓",
+                                    style = m.meta.copy(color = Color.White, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                                )
+                            }
+                        }
+                    }
+                    // 「自动」选项
+                    val isAuto = selectedPaletteIndex == null
+                    val autoSize = if (isAuto) m.rpx(56) else m.rpx(44)
+                    Box(
+                        modifier = Modifier
+                            .size(autoSize)
+                            .animateContentSize(tween(200))
+                            .clip(CircleShape)
+                            .background(Tokens.PaperSunken)
+                            .then(
+                                if (isAuto) Modifier.border(m.rpx(3), LocalPalette.current.brand, CircleShape)
+                                else Modifier
+                            )
+                            .clickable { onSelectPalette(null) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "自动",
+                            style = m.caption.copy(fontWeight = if (isAuto) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal)
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(m.rpx(28)))
+
+                // 深色模式开关
+                Row(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "🌙 深色模式",
+                            style = m.bodyLg.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+                        )
+                        Text(
+                            text = if (isDarkMode) "已开启" else "已关闭",
+                            style = m.caption.copy(color = Tokens.InkMuted)
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .width(m.rpx(96))
+                            .height(m.rpx(52))
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(m.rpx(26)))
+                            .background(if (isDarkMode) LocalPalette.current.brand else Tokens.PaperSunken)
+                            .clickable { onToggleDarkMode() }
+                            .padding(m.rpx(4)),
+                        contentAlignment = if (isDarkMode) Alignment.CenterEnd else Alignment.CenterStart
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(m.rpx(44))
+                                .clip(CircleShape)
+                                .background(Color.White)
+                        )
+                    }
+                }
+            }
+        }
+
         // ---------- 关于 ----------
         item(key = "sec3") {
             SectionHeader(
                 eyebrow = "03 / 关于",
                 title = "关于",
                 modifier = Modifier
-                    .staggerEnter(tracker, "sec3", 6)
+                    .staggerEnter(tracker, "sec3", 8)
                     .padding(top = m.rpx(48))
             )
         }

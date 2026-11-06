@@ -601,7 +601,21 @@ WeekModeContent     课表（原 WeekGrid，保留分段映射的当前时间线
 | WeekBlockView offset→graphicsLayer | 纯合成层操作，不触发布局测量 |
 | 底栏药丸加描边 | brand.copy(alpha=0.12f) + 1rpx 淡描边，白色板下也有边界感 |
 
-## 十八、下一步（可选增强）
+## 十八、v2.7.0 游戏化重做：全新视觉语言 + 深色模式
+
+| 改动 | 说明 |
+|------|------|
+| 五色主题手动选择 | 「我的」页加色板选择器（蓝/绿/黑/白/粉），不再按周自动轮换 |
+| 深色模式 | 「黑」= 深色模式（深底浅字），「白」= 浅色模式；Theme.kt 支持 darkColorScheme |
+| 偏好持久化 | AppFlag 表扩展为 KV 存储，palette_index / dark_mode 两个 key |
+| 圆角全面加大 | radiusSm 16→20, radiusMd 22→32, radiusLg 30→48, radiusXl 40→64 |
+| 手绘虚线边框 | PaperCard/AppButton SECONDARY 改 3rpx 虚线 + 贴纸阴影 |
+| 按钮活泼化 | PRIMARY 纯色+阴影代替渐变，SECONDARY 虚线边框 |
+| TimelineRow 任务卡 | 左侧大 emoji + 右侧状态徽章 + 底部经验值装饰线 |
+| 底栏 emoji 图标 | 📅日程/📊概况/👤我的，选中态弹跳动画+彩色光晕 |
+| versionCode 13 / versionName "2.7.0" |
+
+## 十九、下一步（可选增强）
 
 - 重复日程规则（每周 / 每月 / 工作日）
 - 首页小组件（今日日程）

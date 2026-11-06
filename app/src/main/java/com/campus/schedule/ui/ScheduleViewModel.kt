@@ -38,7 +38,10 @@ data class ScheduleUiState(
     val conflictIds: Set<String> = emptySet(),
     val conflictPairs: List<String> = emptyList(),
     val conflictExpanded: Boolean = false,
-    val loaded: Boolean = false
+    val loaded: Boolean = false,
+    // v2.7 偏好状态
+    val selectedPaletteIndex: Int? = null,
+    val isDarkMode: Boolean = false
 ) {
     /** 当前视图下应展示的条目（已按筛选条件过滤，且按开始时间升序）。 */
     val visibleItems: List<ScheduleItem>
@@ -121,6 +124,16 @@ class ScheduleViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
+        // v2.7：启动时读取偏好设置
+        viewModelScope.launch {
+            val pi = repo.getPaletteIndex()
+            val dm = repo.getDarkMode()
+            _uiState.value = _uiState.value.copy(
+                selectedPaletteIndex = pi,
+                isDarkMode = dm
+            )
+        }
+
         viewModelScope.launch {
             repo.seedIfEmpty()
             repo.observeAll().collect { list ->
@@ -131,6 +144,25 @@ class ScheduleViewModel(
                 )
                 recomputeConflicts()
             }
+        }
+    }
+
+    // ── v2.7 偏好操作 ──────────────────────────────────────────────
+
+    /** 选择色板；null = 恢复按周自动轮换。 */
+    fun onSelectPalette(index: Int?) {
+        viewModelScope.launch {
+            repo.setPaletteIndex(index)
+            _uiState.value = _uiState.value.copy(selectedPaletteIndex = index)
+        }
+    }
+
+    /** 切换深色模式。 */
+    fun onToggleDarkMode() {
+        viewModelScope.launch {
+            val next = !_uiState.value.isDarkMode
+            repo.setDarkMode(next)
+            _uiState.value = _uiState.value.copy(isDarkMode = next)
         }
     }
 

@@ -106,6 +106,8 @@ import com.campus.schedule.ui.screens.MineScreen
 import com.campus.schedule.ui.screens.OverviewScreen
 import com.campus.schedule.ui.screens.ScheduleScreen
 import com.campus.schedule.ui.theme.CampusScheduleTheme
+import com.campus.schedule.ui.theme.DarkTokens
+import com.campus.schedule.ui.theme.LocalIsDark
 import com.campus.schedule.ui.theme.LocalMetrics
 import com.campus.schedule.ui.theme.LocalPalette
 import com.campus.schedule.ui.theme.LocalReducedMotion
@@ -141,35 +143,10 @@ class MainActivity : ComponentActivity() {
         focusIdState.value = intent?.getStringExtra(EXTRA_FOCUS_ID)
 
         setContent {
-            CampusScheduleTheme {
-                // 启动动画盖在整个界面之上：覆盖层自己会在入场结束后淡出并移除。
-                // 主界面在覆盖层之下**同时**完成首帧组合，所以淡出时底下已经是
-                // 画好的页面，不是白纸 —— 这是「无闪屏」的关键。
-                // 启动时序（v2.4.1）：
-                // booted   —— 覆盖层第一帧就置真，让 SceneTransition 立刻开始收拢、
-                //              主界面趁覆盖层还在时完成全部重组（预热）。
-                // dismissed —— 约 1300ms 后移除覆盖层节点。之前 onFinished 一触发
-                //              就同时「撤遮罩 + 首次组合整页」，两件事挤在同几帧里，
-                //              这就是用户看到的「动画卡顿」。现在二者错开。
-                var booted by remember { mutableStateOf(false) }
-                var dismissed by remember { mutableStateOf(false) }
-                LaunchedEffect(Unit) {
-                    if (!dismissed) {
-                        kotlinx.coroutines.delay(1300)
-                        dismissed = true
-                    }
-                }
-                Box(modifier = Modifier.fillMaxSize()) {
-                    AppRoot(
-                        focusId = focusIdState.value,
-                        focusToken = focusTokenState.value,
-                        sceneEnabled = booted,
-                    )
-                    if (!dismissed) {
-                        LaunchOverlay(onFinished = { booted = true })
-                    }
-                }
-            }
+            AppRootWithTheme(
+                focusId = focusIdState.value,
+                focusToken = focusTokenState.value
+            )
         }
     }
 
@@ -210,16 +187,63 @@ private fun Page.tabOrDefault(): Tab = when (this) {
     else -> Tab.SCHEDULE
 }
 
+/**
+ * v2.7：Theme 包裹层。在 setContent 里直接调用，这样 Theme 能拿到 ViewModel 的偏好状态。
+ * AppRoot 本身不再包 Theme，避免嵌套两层。
+ */
 @Composable
-private fun AppRoot(focusId: String?, focusToken: Int, sceneEnabled: Boolean = true) {
+private fun AppRootWithTheme(focusId: String?, focusToken: Int) {
     val context = LocalContext.current
     val repo = remember {
         ScheduleRepository(AppDatabase.get(context).scheduleDao())
     }
     val vm: ScheduleViewModel = viewModel(factory = ScheduleViewModel.Factory(repo, context))
-    val state by vm.uiState.collectAsStateWithLifecycle()
-    val toast by vm.toast.collectAsStateWithLifecycle()
-    val items by vm.allItems.collectAsStateWithLifecycle()
+    val prefsState by vm.uiState.collectAsStateWithLifecycle()
+
+    CampusScheduleTheme(
+        paletteIndex = prefsState.selectedPaletteIndex,
+        isDarkMode = prefsState.isDarkMode
+    ) {
+        // 启动动画盖在整个界面之上：覆盖层自己会在入场结束后淡出并移除。
+        // 主界面在覆盖层之下**同时**完成首帧组合，所以淡出时底下已经是
+        // 画好的页面，不是白纸 —— 这是「无闪屏」的关键。
+        var booted by remember { mutableStateOf(false) }
+        var dismissed by remember { mutableStateOf(false) }
+        LaunchedEffect(Unit) {
+            if (!dismissed) {
+                kotlinx.coroutines.delay(1300)
+                dismissed = true
+            }
+        }
+        Box(modifier = Modifier.fillMaxSize()) {
+            AppRoot(
+                focusId = focusId,
+                focusToken = focusToken,
+                sceneEnabled = booted,
+                vm = vm
+            )
+            if (!dismissed) {
+                LaunchOverlay(onFinished = { booted = true })
+            }
+        }
+    }
+}
+
+@Composable
+private fun AppRoot(
+    focusId: String?,
+    focusToken: Int,
+    sceneEnabled: Boolean = true,
+    vm: ScheduleViewModel? = null
+) {
+    val context = LocalContext.current
+    val repo = remember {
+        ScheduleRepository(AppDatabase.get(context).scheduleDao())
+    }
+    val effectiveVm = vm ?: viewModel(factory = ScheduleViewModel.Factory(repo, context))
+    val state by effectiveVm.uiState.collectAsStateWithLifecycle()
+    val toast by effectiveVm.toast.collectAsStateWithLifecycle()
+    val items by effectiveVm.allItems.collectAsStateWithLifecycle()
 
     // 返回栈：栈底的 Tab 页是「首页」，往上压二级页（目前只有编辑页）。
     // 每次返回只弹一层，弹出来的目标页决定 tab 高亮 —— 见 BackHandler。
@@ -297,7 +321,7 @@ private fun AppRoot(focusId: String?, focusToken: Int, sceneEnabled: Boolean = t
     LaunchedEffect(toast) {
         toast?.let {
             snackbarHostState.showSnackbar(it)
-            vm.consumeToast()
+            effectiveVm.consumeToast()
         }
     }
 
@@ -442,20 +466,20 @@ private fun AppRoot(focusId: String?, focusToken: Int, sceneEnabled: Boolean = t
                     when (current) {
                             Page.SCHEDULE -> ScheduleScreen(
                                 state = state,
-                                onFilterChange = vm::onSelectFilter,
-                                onPrevWeek = vm::onPrevWeek,
-                                onNextWeek = vm::onNextWeek,
-                                onThisWeek = vm::onBackToThisWeek,
-                                onToday = vm::onBackToToday,
-                                onPrevDay = vm::onPrevDay,
-                                onNextDay = vm::onNextDay,
-                                onSelectDate = vm::onSelectDate,
+                                onFilterChange = effectiveVm::onSelectFilter,
+                                onPrevWeek = effectiveVm::onPrevWeek,
+                                onNextWeek = effectiveVm::onNextWeek,
+                                onThisWeek = effectiveVm::onBackToThisWeek,
+                                onToday = effectiveVm::onBackToToday,
+                                onPrevDay = effectiveVm::onPrevDay,
+                                onNextDay = effectiveVm::onNextDay,
+                                onSelectDate = effectiveVm::onSelectDate,
                                 onItemClick = { item ->
                                     editing = item
                                     push(Page.EDIT)
                                 },
-                                onToggleStar = vm::onToggleStar,
-                                onToggleConflict = vm::onToggleConflict,
+                                onToggleStar = effectiveVm::onToggleStar,
+                                onToggleConflict = effectiveVm::onToggleConflict,
                                 onCreateNew = {
                                     editing = null
                                     push(Page.EDIT)
@@ -488,7 +512,7 @@ private fun AppRoot(focusId: String?, focusToken: Int, sceneEnabled: Boolean = t
                             Page.MINE -> MineScreen(
                                 items = items,
                                 onFilterJump = { key ->
-                                    vm.onSelectFilter(
+                                    effectiveVm.onSelectFilter(
                                         when (key) {
                                             "today" -> ScheduleFilter.TODAY
                                             "starred" -> ScheduleFilter.STARRED
@@ -503,23 +527,28 @@ private fun AppRoot(focusId: String?, focusToken: Int, sceneEnabled: Boolean = t
                                         arrayOf("application/json", "text/plain", "*/*")
                                     )
                                 },
-                                onClearSamples = vm::clearSamples,
-                                onClearAll = { confirmClearAll = true }
+                                onClearSamples = effectiveVm::clearSamples,
+                                onClearAll = { confirmClearAll = true },
+                                // v2.7 偏好
+                                selectedPaletteIndex = state.selectedPaletteIndex,
+                                isDarkMode = state.isDarkMode,
+                                onSelectPalette = effectiveVm::onSelectPalette,
+                                onToggleDarkMode = effectiveVm::onToggleDarkMode
                             )
 
                             Page.EDIT -> EditScreen(
                                 editing = editing,
                                 onSave = { form ->
                                     val ok = if (editing == null) {
-                                        vm.onCreate(form)
+                                        effectiveVm.onCreate(form)
                                     } else {
-                                        vm.onUpdate(editing!!, form)
+                                        effectiveVm.onUpdate(editing!!, form)
                                     }
                                     if (ok) popPage()
                                     ok
                                 },
                                 onDelete = { item ->
-                                    vm.onDelete(item)
+                                    effectiveVm.onDelete(item)
                                     popPage()
                                 },
                                 onBack = { popPage() },
@@ -540,7 +569,7 @@ private fun AppRoot(focusId: String?, focusToken: Int, sceneEnabled: Boolean = t
         body = "所有日程（含你自己创建的）都会被删除，且无法恢复。建议先导出备份。",
         confirmText = "确认清空",
         onConfirm = {
-            vm.clearAll()
+            effectiveVm.clearAll()
             confirmClearAll = false
         },
         onDismiss = { confirmClearAll = false }
@@ -587,6 +616,11 @@ private fun AppRoot(focusId: String?, focusToken: Int, sceneEnabled: Boolean = t
  *    但都落在 200–300ms 区间，联动起来不会一快一慢。
  *
  * 编辑页不显示底栏（`Scaffold` 里判断），见 AppRoot。
+ *
+ * v2.7 游戏化底栏：
+ * - emoji 图标（日程📅/概况📊/我的👤）
+ * - 选中态弹跳动画 + 彩色光晕
+ * - 手绘虚线顶部分隔
  */
 @Composable
 private fun AppBottomBar(
@@ -596,24 +630,36 @@ private fun AppBottomBar(
 ) {
     val m = LocalMetrics.current
     val p = LocalPalette.current
+    val isDark = LocalIsDark.current
     val reduced = LocalReducedMotion.current
     val tabs = Tab.values()
-    val hairline = m.rpx(2)
     val barHeight = m.rpx(112)
-    // 药丸高度比格子略矮，上下留出「浮在格子里」的余量
     val pillHeight = m.rpx(88)
+
+    // v2.7：深色模式色值
+    val bgColor = if (isDark) DarkTokens.PaperRaised else Tokens.PaperRaised
+    val lineColor = if (isDark) DarkTokens.Line else Tokens.Line
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Tokens.PaperRaised)
+            .background(bgColor)
             .drawBehind {
-                // 2rpx 顶部分隔线：和卡片描边同一套线条语言
-                drawRect(
-                    color = Tokens.Line,
-                    topLeft = androidx.compose.ui.geometry.Offset.Zero,
-                    size = androidx.compose.ui.geometry.Size(size.width, hairline.toPx())
-                )
+                // v2.7：手绘虚线顶部分隔
+                val dashLen = m.rpx(10).toPx()
+                val gapLen = m.rpx(6).toPx()
+                val strokeW = m.rpx(2).toPx()
+                val y = strokeW / 2f
+                var x = 0f
+                while (x < size.width) {
+                    drawLine(
+                        color = lineColor,
+                        start = androidx.compose.ui.geometry.Offset(x, y),
+                        end = androidx.compose.ui.geometry.Offset(minOf(x + dashLen, size.width), y),
+                        strokeWidth = strokeW
+                    )
+                    x += dashLen + gapLen
+                }
             }
             .navigationBarsPadding()
     ) {
@@ -623,17 +669,10 @@ private fun AppBottomBar(
                 .height(barHeight)
         ) {
             val cellWidth = maxWidth / tabs.size
-            // 药丸比格子窄一点，左右各留 12rpx，滑到位时和格子居中
             val pillInset = m.rpx(12)
             val pillWidth = cellWidth - pillInset * 2
             val pillTop = (barHeight - pillHeight) / 2
 
-            // v2.5：用 Dp 级的 animateDpAsState + offset(x) 替代之前的
-            // Dp→px translationX。之前 weight(1f) 的实际像素与 maxWidth/3
-            // 有亚像素误差，translationX 基于后者算 → 胶囊和图标错位。
-            // offset(x) 在布局阶段就确定位置，和 weight 分配完全同步。
-            // v2.5 fix：Motion.tab() 返回 FiniteAnimationSpec<Float>，
-            // animateDpAsState 需要 AnimationSpec<Dp>。用 tween<Dp>() 显式指定类型。
             val pillOffset = animateDpAsState(
                 targetValue = pillInset + cellWidth * tabs.indexOf(selected),
                 animationSpec = if (reduced) {
@@ -644,20 +683,22 @@ private fun AppBottomBar(
                 label = "tabPill"
             )
 
-            // v2.6：药丸改用 brand 实色 + 低透明度，比 brandDeep 更鲜明；
-            // 同时加一圈极淡的描边，让药丸在「白」色板下也有边界感。
+            // v2.7：药丸改品牌实色 + 光晕阴影
             Box(
                 modifier = Modifier
                     .offset(x = pillOffset.value, y = pillTop)
                     .width(pillWidth)
                     .height(pillHeight)
                     .clip(RoundedCornerShape(m.radiusPill))
-                    .background(p.brand.copy(alpha = 0.12f))
-                    .border(
-                        width = m.rpx(1),
-                        color = p.brand.copy(alpha = 0.18f),
-                        shape = RoundedCornerShape(m.radiusPill)
-                    )
+                    .background(p.brand.copy(alpha = 0.18f))
+                    .drawBehind {
+                        // 彩色光晕
+                        drawCircle(
+                            color = p.brand.copy(alpha = 0.12f),
+                            radius = size.minDimension / 2f + m.rpx(8).toPx(),
+                            center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
+                        )
+                    }
             )
 
             Row(modifier = Modifier.fillMaxSize()) {
@@ -682,6 +723,9 @@ private fun AppBottomBar(
  * 图标盒与文字行高固定，两者之间 6rpx —— 这是整套里唯一的几何常数，
  * 改字号也不会推动图标。
  */
+/**
+ * v2.7 游戏化 Tab 项：emoji 图标 + 选中态弹跳。
+ */
 @Composable
 private fun BottomTabItem(
     tab: Tab,
@@ -692,16 +736,29 @@ private fun BottomTabItem(
 ) {
     val m = LocalMetrics.current
     val p = LocalPalette.current
+    val isDark = LocalIsDark.current
     val reduced = LocalReducedMotion.current
     val interaction = rememberPressInteraction()
 
-    // 只做颜色过渡：尺寸/字宽恒定 → 居中不会抖
-    val blend = animateFloatAsState(
+    // v2.7：深色模式色值
+    val inkSecColor = if (isDark) DarkTokens.InkSecondary else Tokens.InkSecondary
+
+    // 选中态弹跳动画
+    val bounce = animateFloatAsState(
         targetValue = if (active) 1f else 0f,
-        animationSpec = Motion.fast(reduced),
-        label = "tabBlend"
+        animationSpec = if (reduced) tween(0) else Motion.bouncy(reduced),
+        label = "tabBounce"
     )
-    val tint = lerp(Tokens.InkSecondary, p.brand, blend.value)
+    val scale = 1f + bounce.value * 0.15f
+    val tint = lerp(inkSecColor, p.brand, bounce.value)
+
+    // v2.7：emoji 图标映射
+    val emoji = when (tab) {
+        Tab.SCHEDULE -> "📅"
+        Tab.OVERVIEW -> "📊"
+        Tab.MINE -> "👤"
+    }
+
     val shape = RoundedCornerShape(m.radiusMd)
 
     Column(
@@ -714,15 +771,16 @@ private fun BottomTabItem(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
+        // v2.7：emoji 图标 + 弹跳缩放
         Box(
-            modifier = Modifier.size(m.rpx(44)),
+            modifier = Modifier
+                .size(m.rpx(44))
+                .graphicsLayer { scaleX = scale; scaleY = scale },
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                painter = painterResource(tab.iconRes),
-                contentDescription = null,
-                tint = tint,
-                modifier = Modifier.fillMaxSize()
+            Text(
+                text = emoji,
+                style = m.displayL.copy(fontSize = m.sp(28))
             )
         }
         Text(
@@ -731,9 +789,9 @@ private fun BottomTabItem(
                 fontSize = m.sp(24),
                 lineHeight = m.sp(30),
                 color = tint,
-                fontWeight = FontWeight.SemiBold
+                fontWeight = if (active) FontWeight.Bold else FontWeight.Normal
             ),
-            modifier = Modifier.padding(top = m.rpx(6)),
+            modifier = Modifier.padding(top = m.rpx(4)),
             maxLines = 1
         )
     }

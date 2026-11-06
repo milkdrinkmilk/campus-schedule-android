@@ -280,10 +280,11 @@ class Metrics(private val scale: Float) {
 
     // ---- 圆角 ----
     val radiusXs: Dp get() = rpx(10)
-    val radiusSm: Dp get() = rpx(16)
-    val radiusMd: Dp get() = rpx(22)
-    val radiusLg: Dp get() = rpx(30)
-    val radiusXl: Dp get() = rpx(40)
+    // v2.7 游戏化：圆角全面加大，营造圆润活泼感
+    val radiusSm: Dp get() = rpx(20)
+    val radiusMd: Dp get() = rpx(32)
+    val radiusLg: Dp get() = rpx(48)
+    val radiusXl: Dp get() = rpx(64)
     val radiusPill: Dp get() = rpx(999)
 
     fun radiusShape(value: Number): Shape = RoundedCornerShape(rpx(value))

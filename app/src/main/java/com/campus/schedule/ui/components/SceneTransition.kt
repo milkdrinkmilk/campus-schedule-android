@@ -52,16 +52,15 @@ fun SceneTransition(enabled: Boolean, content: @Composable () -> Unit) {
         }
     }
 
+    // v2.5：去掉 scaleX/scaleY。
+    // 120Hz 设备上，每帧对整棵子树做缩放会触发离屏渲染 + 重绘，肉眼可见掉帧。
+    // 只保留 alpha 过渡（纯合成层操作，GPU 友好），视觉上仍然有「内容从雾中浮现」
+    // 的入场感，但不再卡。
     Box(
         modifier = Modifier
             .fillMaxSize()
             .graphicsLayer {
-                // progress = 0 → 0.985 / 0.92；progress = 1 → 1 / 1
-                val p = progress.value
-                val scale = 0.985f + 0.015f * p
-                scaleX = scale
-                scaleY = scale
-                alpha = 0.92f + 0.08f * p
+                alpha = 0.92f + 0.08f * progress.value
             }
     ) {
         content()

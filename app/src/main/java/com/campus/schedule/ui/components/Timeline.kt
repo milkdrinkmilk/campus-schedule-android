@@ -147,6 +147,17 @@ private fun NavArrowButton(
  * * 时间列定宽 132rpx 右对齐；正文左起 28rpx；星标点击区 56rpx；
  * * 分隔线在 padding 之外绘制（inset 左右各 0），保证通栏。
  */
+
+/**
+ * v2.5 日程条目 —— 「便签卡」风格。
+ *
+ * 设计意图（对应用户反馈「边框全部重做、换风格、复杂有趣、玩梗」）：
+ * - 不再是 v2.4.1 的无框清单行（太素），也不是 v2.3 的描边卡片（太呆板）。
+ * - 改成一张微微着色的便签：左侧 4rpx 圆头色条交代分类，右上角一个 emoji
+ *   小印章给点趣味，底部 2rpx 虚线像手撕便签的齿孔。
+ * - 三个 Tab 各自有不同的装饰语言：日程页是便签，概况页是数据面板，
+ *   我的页是身份卡 —— 视觉上不再「三页长得一样」。
+ */
 @Composable
 fun TimelineRow(
     entry: TimelineEntry,
@@ -159,40 +170,53 @@ fun TimelineRow(
     val p = LocalPalette.current
     val interaction = rememberPressInteraction()
 
-    // 色系：用户在编辑页选的「卡片色系」体现在时间数字的颜色上。
+    val accentColor = Tokens.accentColor(entry.accent)
+    val accentTint = Tokens.accentTint(entry.accent)
     val accentText = Tokens.accentTextColor(entry.accent)
     val ongoing = entry.statusTone == TagTone.ONGOING
     val ended = entry.statusTone == TagTone.ENDED
 
+    // 玩梗：根据状态选一个 emoji 印章，让列表不那么「工具感」
+    val moodEmoji = when {
+        ongoing -> "🔥"
+        entry.conflict -> "⚠️"
+        entry.starred -> "⭐"
+        ended -> "✅"
+        else -> "📌"
+    }
+
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(
-                if (ongoing) p.brandTint.copy(alpha = 0.45f) else Color.Transparent
-            )
+            .clip(RoundedCornerShape(m.radiusMd))
+            .background(accentTint.copy(alpha = if (ongoing) 0.55f else 0.28f))
             .drawBehind {
-                // 左侧进行中竖条：贴着屏幕边缘的一枚圆头短线
-                if (ongoing) {
-                    val w = m.rpx(6).toPx()
-                    val inset = m.rpx(20).toPx()
-                    drawRoundRect(
-                        color = p.brand,
-                        topLeft = androidx.compose.ui.geometry.Offset(0f, inset),
-                        size = androidx.compose.ui.geometry.Size(
-                            w,
-                            (size.height - inset * 2).coerceAtLeast(0f)
-                        ),
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(w / 2f, w / 2f)
-                    )
-                }
-                // 通栏发丝线：最后一项不画，避免和页面底部留白打架
+                // 左侧色条：4rpx 圆头竖线，比 v2.4.1 的 6rpx 细一点，更精致
+                val barW = m.rpx(4).toPx()
+                val barInset = m.rpx(10).toPx()
+                drawRoundRect(
+                    color = accentColor,
+                    topLeft = androidx.compose.ui.geometry.Offset(barInset, barInset),
+                    size = androidx.compose.ui.geometry.Size(
+                        barW,
+                        (size.height - barInset * 2).coerceAtLeast(0f)
+                    ),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(barW / 2f, barW / 2f)
+                )
+                // 底部虚线：手撕便签的齿孔感，比实线有趣
                 if (showDivider) {
-                    val lw = m.rpx(2).toPx()
-                    drawRect(
-                        color = Tokens.Line,
-                        topLeft = androidx.compose.ui.geometry.Offset(0f, size.height - lw),
-                        size = androidx.compose.ui.geometry.Size(size.width, lw)
-                    )
+                    val dashW = m.rpx(8).toPx()
+                    val gapW = m.rpx(6).toPx()
+                    val y = size.height - m.rpx(1).toPx()
+                    var x = 0f
+                    while (x < size.width) {
+                        drawRect(
+                            color = Tokens.Line,
+                            topLeft = androidx.compose.ui.geometry.Offset(x, y),
+                            size = androidx.compose.ui.geometry.Size(dashW, m.rpx(1).toPx())
+                        )
+                        x += dashW + gapW
+                    }
                 }
             }
             .then(
@@ -200,25 +224,25 @@ fun TimelineRow(
                     Modifier.border(
                         width = m.rpx(2),
                         color = Tokens.Gold,
-                        shape = RoundedCornerShape(m.radiusSm)
+                        shape = RoundedCornerShape(m.radiusMd)
                     )
                 } else {
                     Modifier
                 }
             )
-            .pressHighlight(interaction, RoundedCornerShape(m.radiusSm))
+            .pressHighlight(interaction, RoundedCornerShape(m.radiusMd))
             .clickableNoRipple(interaction, onClick = onClick)
             .padding(
-                start = m.rpx(24),
-                end = m.rpx(16),
-                top = m.rpx(22),
-                bottom = m.rpx(22)
+                start = m.rpx(28),
+                end = m.rpx(18),
+                top = m.rpx(20),
+                bottom = m.rpx(20)
             ),
         verticalAlignment = Alignment.Top
     ) {
-        // ---- 时间槽（右对齐，形成一条竖向数字栏）----
+        // ---- 时间槽 ----
         Column(
-            modifier = Modifier.width(m.rpx(132)),
+            modifier = Modifier.width(m.rpx(128)),
             horizontalAlignment = Alignment.End
         ) {
             Text(
@@ -253,12 +277,12 @@ fun TimelineRow(
         Column(
             modifier = Modifier
                 .weight(1f)
-                .padding(start = m.rpx(28)),
+                .padding(start = m.rpx(24)),
             verticalArrangement = Arrangement.spacedBy(m.rpx(6))
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(m.rpx(12)),
+                horizontalArrangement = Arrangement.spacedBy(m.rpx(10)),
                 verticalAlignment = Alignment.Bottom
             ) {
                 Text(
@@ -272,17 +296,26 @@ fun TimelineRow(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
-                // 状态：不着重色的裸文字 + 小点，替代原来的胶囊
-                StatusPill(text = entry.status, tone = entry.statusTone, filled = false)
+                // emoji 印章：比纯文字状态更有「人味」
+                Text(
+                    text = moodEmoji,
+                    style = m.meta.copy(fontSize = m.sp(28), lineHeight = m.sp(36)),
+                    modifier = Modifier.padding(bottom = m.rpx(2))
+                )
             }
 
-            val detail = listOf(entry.meta, entry.location)
-                .filter { it.isNotBlank() }
-                .joinToString(" · ")
-            if (detail.isNotBlank()) {
+            // 状态 + 详情合并成一行，减少视觉层级
+            val detailParts = listOfNotNull(
+                entry.status.takeIf { it.isNotBlank() },
+                entry.meta.takeIf { it.isNotBlank() },
+                entry.location.takeIf { it.isNotBlank() }
+            )
+            if (detailParts.isNotEmpty()) {
                 Text(
-                    text = detail,
-                    style = m.caption.copy(color = Tokens.InkSecondary),
+                    text = detailParts.joinToString(" · "),
+                    style = m.caption.copy(
+                        color = if (ongoing) p.brandDeep else Tokens.InkSecondary
+                    ),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -290,7 +323,7 @@ fun TimelineRow(
         }
 
         if (onToggleStar != null) {
-            Box(modifier = Modifier.padding(start = m.rpx(4), top = m.rpx(6))) {
+            Box(modifier = Modifier.padding(start = m.rpx(4), top = m.rpx(4))) {
                 StarButton(starred = entry.starred, onClick = onToggleStar)
             }
         }

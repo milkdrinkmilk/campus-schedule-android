@@ -572,7 +572,25 @@ WeekModeContent     课表（原 WeekGrid，保留分段映射的当前时间线
 
 ---
 
-## 十六、下一步（可选增强）
+## 十六、v2.5.0 体验打磨：卡顿修复、便签卡风格与分类详情
+
+| 反馈 | 根因 | 处理 |
+|------|------|------|
+| 启动动画仍卡顿（120Hz） | `SceneTransition` 在 graphicsLayer 里同时改 scaleX/scaleY/alpha，每帧触发子树重绘 | 去掉 scale，只保留 alpha 过渡（纯合成层操作） |
+| 切换页面有残影 | `exitPageTransition` 用 slideOut+fadeOut 但没有 clipToBounds，旧页滑出时新页已在下方画出 | AnimatedContent 加 `.clipToBounds()` |
+| 本周分布下方文字截断 | WeekChart Row 固定 height(200rpx)，但 count+spacer+bar+spacer+label = 222rpx > 200rpx | 改 `wrapContentHeight()`，让内容自己撑开 |
+| 底栏胶囊错位 | Dp→px translationX 基于 maxWidth/3，但 weight(1f) 实际宽度有亚像素误差 | 改用 `animateDpAsState` + `offset(x)`，布局阶段同步 |
+| 底栏胶囊颜色太浅 | brandTint (0xFFEAF2FF) 在白底上几乎不可见 | 改 `brandDeep.copy(alpha = 0.14f)` |
+| 日程条目太素/呆板 | v2.4.1 无框清单行缺乏视觉层次 | 重写为「便签卡」：着色底 + 左侧色条 + emoji 印章 + 底部虚线齿孔 |
+| 即将提醒文本贴边 | ReminderRow vertical padding 16rpx 对 bodyLg+meta 来说太紧 | 改 24rpx + 水平 8rpx |
+| 概况分类不能点进详情 | CategoryBar 无 onClick | 新增 `onCategoryClick` + Page.CATEGORY_DETAIL + CategoryDetailScreen |
+
+### 三页差异化设计
+- **日程页**：便签卡风格（着色底 + 色条 + emoji + 虚线齿孔）
+- **概况页**：数据面板风格（RaisedCard + 柱状图 + 分类条可点击）
+- **我的页**：身份卡风格（BrandGradient 头像 + 统计行）
+
+## 十七、下一步（可选增强）
 
 - 重复日程规则（每周 / 每月 / 工作日）
 - 首页小组件（今日日程）

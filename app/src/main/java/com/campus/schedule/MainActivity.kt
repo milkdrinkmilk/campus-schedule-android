@@ -10,6 +10,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -28,10 +29,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -49,6 +53,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
@@ -74,7 +79,16 @@ import com.campus.schedule.notify.ReminderScheduler
 import com.campus.schedule.ui.ScheduleFilter
 import com.campus.schedule.ui.ScheduleViewModel
 import com.campus.schedule.ui.components.ConfirmOverlay
+import com.campus.schedule.ui.components.EmptyState
 import com.campus.schedule.ui.components.LaunchOverlay
+import com.campus.schedule.ui.components.LocateButton
+import com.campus.schedule.ui.components.Masthead
+import com.campus.schedule.ui.components.TimelineRow
+import com.campus.schedule.ui.components.rememberEnterTracker
+import com.campus.schedule.ui.components.staggerEnter
+import com.campus.schedule.ui.toTimelineEntry
+
+// v2.5：CategoryDetailScreen 用到的组件已在上方 import。
 import com.campus.schedule.ui.components.SceneTransition
 import com.campus.schedule.ui.components.pressHighlight
 import com.campus.schedule.ui.components.pressScale
@@ -172,7 +186,7 @@ class MainActivity : ComponentActivity() {
 }
 
 /** 顶层页面。 */
-private enum class Page { SCHEDULE, OVERVIEW, MINE, EDIT }
+private enum class Page { SCHEDULE, OVERVIEW, MINE, EDIT, CATEGORY_DETAIL }
 
 /** 底部导航的三个 Tab。 */
 private enum class Tab(val label: String, val iconRes: Int) {
@@ -213,6 +227,8 @@ private fun AppRoot(focusId: String?, focusToken: Int, sceneEnabled: Boolean = t
     val currentPage: () -> Page = { pageStack.last() }
     var tab by remember { mutableStateOf(Tab.SCHEDULE) }
     var editing by remember { mutableStateOf<ScheduleItem?>(null) }
+    // v2.5：分类详情页的当前分类名。push(CATEGORY_DETAIL) 前赋值，popPage 后自动失效。
+    var detailCategory by remember { mutableStateOf<String?>(null) }
     // 页面转场方向：1 = 往右翻（新页从右进），-1 = 往左翻。
     var navDirection by remember { mutableIntStateOf(1) }
     var confirmClearAll by remember { mutableStateOf(false) }
@@ -396,6 +412,10 @@ private fun AppRoot(focusId: String?, focusToken: Int, sceneEnabled: Boolean = t
             val exitSheet = exitSheetTransition()
             val cancelExit = ExitTransition.None
 
+            // v2.5：加 clipToBounds。
+            // 之前 exitPageTransition 用 slideOutHorizontally + fadeOut，旧页滑出时
+            // 已经画到容器外面，但新页同时在下方画出 → 用户看到「残影」。
+            // clipToBounds 把整个转场容器裁掉，旧页一旦离开边界就不可见。
             AnimatedContent(
                 targetState = currentPage(),
                 transitionSpec = {
@@ -409,7 +429,9 @@ private fun AppRoot(focusId: String?, focusToken: Int, sceneEnabled: Boolean = t
                     }
                 },
                 label = "page-transition",
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clipToBounds()
             ) { current ->
                 Box(
                     modifier = Modifier
@@ -444,7 +466,22 @@ private fun AppRoot(focusId: String?, focusToken: Int, sceneEnabled: Boolean = t
                                 onItemClick = { item ->
                                     editing = item
                                     push(Page.EDIT)
+                                },
+                                onCategoryClick = { cat ->
+                                    detailCategory = cat
+                                    push(Page.CATEGORY_DETAIL)
                                 }
+                            )
+
+                            // v2.5：分类详情页 —— 列出某个分类下的所有日程
+                            Page.CATEGORY_DETAIL -> CategoryDetailScreen(
+                                category = detailCategory.orEmpty(),
+                                items = items,
+                                onItemClick = { item ->
+                                    editing = item
+                                    push(Page.EDIT)
+                                },
+                                onBack = { popPage() }
                             )
 
                             Page.MINE -> MineScreen(
@@ -584,30 +621,37 @@ private fun AppBottomBar(
                 .fillMaxWidth()
                 .height(barHeight)
         ) {
-            val density = androidx.compose.ui.platform.LocalDensity.current
             val cellWidth = maxWidth / tabs.size
             // 药丸比格子窄一点，左右各留 12rpx，滑到位时和格子居中
             val pillInset = m.rpx(12)
             val pillWidth = cellWidth - pillInset * 2
-            val pillTarget = with(density) {
-                (pillInset + cellWidth * tabs.indexOf(selected)).toPx()
-            }
             val pillTop = (barHeight - pillHeight) / 2
 
-            val pillX = animateFloatAsState(
-                targetValue = pillTarget,
-                animationSpec = if (reduced) tween(0) else Motion.tab(reduced),
+            // v2.5：用 Dp 级的 animateDpAsState + offset(x) 替代之前的
+            // Dp→px translationX。之前 weight(1f) 的实际像素与 maxWidth/3
+            // 有亚像素误差，translationX 基于后者算 → 胶囊和图标错位。
+            // offset(x) 在布局阶段就确定位置，和 weight 分配完全同步。
+            // v2.5 fix：Motion.tab() 返回 FiniteAnimationSpec<Float>，
+            // animateDpAsState 需要 AnimationSpec<Dp>。用 tween<Dp>() 显式指定类型。
+            val pillOffset = animateDpAsState(
+                targetValue = pillInset + cellWidth * tabs.indexOf(selected),
+                animationSpec = if (reduced) {
+                    tween(durationMillis = 0)
+                } else {
+                    tween(durationMillis = Motion.DurTab, easing = Motion.EaseInOut)
+                },
                 label = "tabPill"
             )
 
             Box(
                 modifier = Modifier
-                    .padding(start = pillInset, top = pillTop)
-                    .graphicsLayer { translationX = pillX.value }
+                    .offset(x = pillOffset.value, y = pillTop)
                     .width(pillWidth)
                     .height(pillHeight)
                     .clip(RoundedCornerShape(m.radiusPill))
-                    .background(p.brandTint)
+                    // v2.5：brandTint 在白底上几乎看不见（静蓝周 0xFFEAF2FF vs PaperRaised FFFFFF）。
+                    // 改用 brandDeep + 低透明度：既有品牌色辨识度，又不会喧宾夺主。
+                    .background(p.brandDeep.copy(alpha = 0.14f))
             )
 
             Row(modifier = Modifier.fillMaxSize()) {
@@ -724,3 +768,70 @@ private fun CreateFab(onClick: () -> Unit) {
  * + `File.writeText` 的实现，在 targetSdk 34 下会被 Scoped Storage 拒绝并崩溃，
  * 且应用并未申请任何存储权限，所以整段移除。
  */
+
+// ---------------------------------------------------------------------------
+// v2.5 分类详情页
+// ---------------------------------------------------------------------------
+
+/**
+ * 列出某个分类下的所有日程。从概况页的分类条点进来，返回键回到概况。
+ * 复用了日程页的 TimelineRow，保持视觉一致；顶部用 Masthead 交代当前分类。
+ */
+@Composable
+private fun CategoryDetailScreen(
+    category: String,
+    items: List<ScheduleItem>,
+    onItemClick: (ScheduleItem) -> Unit,
+    onBack: () -> Unit
+) {
+    val m = LocalMetrics.current
+    val tracker = rememberEnterTracker()
+
+    val filtered = remember(items, category) {
+        items.filter { it.category.ifBlank { "其他" } == category }
+            .sortedBy { it.startTime }
+    }
+
+    BackHandler(onBack = onBack)
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Tokens.TopGradient)
+            .padding(horizontal = m.pagePadding)
+    ) {
+        Masthead(
+            kicker = "概况 / 分类详情",
+            title = category,
+            meta = "${filtered.size} 条日程",
+            trailing = {
+                LocateButton(text = "返回", onClick = onBack)
+            }
+        )
+
+        if (filtered.isEmpty()) {
+            com.campus.schedule.ui.components.EmptyState(
+                title = "这个分类下还没有日程",
+                body = "去日程页新建一条，选「$category」分类就会出现在这里。",
+                lineArt = true
+            )
+        } else {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                filtered.forEachIndexed { index, item ->
+                    val entry = item.toTimelineEntry(conflict = false)
+                    com.campus.schedule.ui.components.TimelineRow(
+                        entry = entry,
+                        onClick = { onItemClick(item) },
+                        showDivider = index < filtered.lastIndex,
+                        modifier = Modifier.staggerEnter(tracker, item.id, index)
+                    )
+                }
+                Spacer(Modifier.height(m.rpx(96)))
+            }
+        }
+    }
+}

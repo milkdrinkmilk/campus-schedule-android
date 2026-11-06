@@ -12,9 +12,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -22,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.style.TextOverflow
@@ -39,12 +43,14 @@ import com.campus.schedule.ui.components.appShadow
 import com.campus.schedule.ui.components.pressHighlight
 import com.campus.schedule.ui.components.pressScale
 import com.campus.schedule.ui.components.rememberEnterTracker
+import com.campus.schedule.ui.components.clickableNoRipple
 import com.campus.schedule.ui.components.rememberPressInteraction
 import com.campus.schedule.ui.components.rippleClick
 import com.campus.schedule.ui.components.staggerEnter
 import com.campus.schedule.ui.theme.LocalMetrics
 import com.campus.schedule.ui.theme.LocalPalette
 import com.campus.schedule.ui.theme.Motion
+import com.campus.schedule.ui.icons.AppIcons
 import com.campus.schedule.ui.theme.Tokens
 import kotlin.math.max
 
@@ -57,6 +63,7 @@ import kotlin.math.max
 fun OverviewScreen(
     items: List<ScheduleItem>,
     onItemClick: (ScheduleItem) -> Unit,
+    onCategoryClick: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val m = LocalMetrics.current
@@ -171,7 +178,8 @@ fun OverviewScreen(
                             count = count,
                             ratio = count.toFloat() / maxCount,
                             total = items.size,
-                            accent = Tokens.accentByIndex(index)
+                            accent = Tokens.accentByIndex(index),
+                            onClick = onCategoryClick?.let { { it(category) } }
                         )
                     }
                 }
@@ -335,10 +343,15 @@ private fun WeekChart(
         modifier = modifier,
         contentPadding = m.rpx(32)
     ) {
+        // v2.5：去掉固定 height(200rpx)。
+        // 之前 count(34) + spacer(6) + bar(140) + spacer(8) + label(34) = 222rpx，
+        // 超过 200rpx 的容器高度 → label 被裁掉，用户反馈「下方文字显示不全」。
+        // 改成 wrapContentHeight，让内容自己撑开；RaisedCard 的 contentPadding
+        // 已经给了上下留白，不会贴边。
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(m.rpx(200)),
+                .wrapContentHeight(),
             horizontalArrangement = Arrangement.spacedBy(m.rpx(12)),
             verticalAlignment = Alignment.Bottom
         ) {
@@ -406,28 +419,58 @@ private fun WeekChart(
     }
 }
 
-/** 分类占比条。 */
+/**
+ * v2.5：分类条可点击，进入该分类的详情页。
+ * 加了 pressHighlight + clickableNoRipple，视觉上暗示「这里能点」。
+ */
 @Composable
 private fun CategoryBar(
     category: String,
     count: Int,
     ratio: Float,
     total: Int,
-    accent: String
+    accent: String,
+    onClick: (() -> Unit)? = null
 ) {
     val m = LocalMetrics.current
     val barColor = Tokens.accentColor(accent)
-    Column {
+    val interaction = rememberPressInteraction()
+
+    Column(
+        modifier = Modifier
+            .then(
+                if (onClick != null) {
+                    Modifier
+                        .clip(RoundedCornerShape(m.radiusSm))
+                        .pressHighlight(interaction, RoundedCornerShape(m.radiusSm))
+                        .clickableNoRipple(interaction, onClick = onClick)
+                        .padding(horizontal = m.rpx(8), vertical = m.rpx(6))
+                } else {
+                    Modifier
+                }
+            )
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(text = category, style = m.body.copy(color = Tokens.Ink))
-            Text(
-                text = "$count",
-                style = m.numeric.copy(color = Tokens.InkMuted)
-            )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(m.rpx(6))) {
+                Text(
+                    text = "$count",
+                    style = m.numeric.copy(color = Tokens.InkMuted)
+                )
+                // 小箭头暗示可点击
+                if (onClick != null) {
+                    Icon(
+                        painter = painterResource(AppIcons.chevronRight),
+                        contentDescription = "查看$category",
+                        tint = Tokens.InkFaint,
+                        modifier = Modifier.size(m.rpx(24))
+                    )
+                }
+            }
         }
         Spacer(Modifier.height(m.rpx(8)))
         Box(
@@ -466,12 +509,15 @@ private fun ReminderRow(
     val interaction = rememberPressInteraction()
     val now = System.currentTimeMillis()
 
+    // v2.5：vertical padding 16→24。
+    // bodyLg lineHeight 46 + meta lineHeight 36 = 82rpx，加上 spacer(4) = 86rpx。
+    // 原来 16rpx*2 = 32rpx 的垂直留白让文字几乎贴到卡片描边，用户反馈「太靠近边框」。
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .pressHighlight(interaction, RoundedCornerShape(m.radiusMd))
             .rippleClick(interaction, onClick = onClick)
-            .padding(vertical = m.rpx(16)),
+            .padding(horizontal = m.rpx(8), vertical = m.rpx(24)),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(m.rpx(16))
     ) {

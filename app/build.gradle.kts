@@ -12,8 +12,8 @@ android {
         applicationId = "com.campus.schedule"
         minSdk = 26
         targetSdk = 34
-        versionCode = 10
-        versionName = "2.4.1"
+        versionCode = 11
+        versionName = "2.5.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

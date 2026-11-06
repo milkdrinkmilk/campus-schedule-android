@@ -14,6 +14,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
@@ -72,6 +74,8 @@ import com.campus.schedule.notify.ReminderScheduler
 import com.campus.schedule.ui.ScheduleFilter
 import com.campus.schedule.ui.ScheduleViewModel
 import com.campus.schedule.ui.components.ConfirmOverlay
+import com.campus.schedule.ui.components.LaunchOverlay
+import com.campus.schedule.ui.components.SceneTransition
 import com.campus.schedule.ui.components.pressHighlight
 import com.campus.schedule.ui.components.pressScale
 import com.campus.schedule.ui.components.rememberPressInteraction
@@ -88,6 +92,7 @@ import com.campus.schedule.ui.screens.OverviewScreen
 import com.campus.schedule.ui.screens.ScheduleScreen
 import com.campus.schedule.ui.theme.CampusScheduleTheme
 import com.campus.schedule.ui.theme.LocalMetrics
+import com.campus.schedule.ui.theme.LocalPalette
 import com.campus.schedule.ui.theme.LocalReducedMotion
 import com.campus.schedule.ui.theme.Motion
 import com.campus.schedule.ui.theme.Tokens
@@ -122,10 +127,20 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             CampusScheduleTheme {
-                AppRoot(
-                    focusId = focusIdState.value,
-                    focusToken = focusTokenState.value
-                )
+                // 启动动画盖在整个界面之上：覆盖层自己会在入场结束后淡出并移除。
+                // 主界面在覆盖层之下**同时**完成首帧组合，所以淡出时底下已经是
+                // 画好的页面，不是白纸 —— 这是「无闪屏」的关键。
+                var booted by remember { mutableStateOf(false) }
+                Box(modifier = Modifier.fillMaxSize()) {
+                    AppRoot(
+                        focusId = focusIdState.value,
+                        focusToken = focusTokenState.value,
+                        sceneEnabled = booted,
+                    )
+                    if (!booted) {
+                        LaunchOverlay(onFinished = { booted = true })
+                    }
+                }
             }
         }
     }
@@ -168,7 +183,7 @@ private fun Page.tabOrDefault(): Tab = when (this) {
 }
 
 @Composable
-private fun AppRoot(focusId: String?, focusToken: Int) {
+private fun AppRoot(focusId: String?, focusToken: Int, sceneEnabled: Boolean = true) {
     val context = LocalContext.current
     val repo = remember {
         ScheduleRepository(AppDatabase.get(context).scheduleDao())
@@ -301,6 +316,9 @@ private fun AppRoot(focusId: String?, focusToken: Int) {
         }
     }
 
+    // 经典「Scene 转场」：启动画面里的元素不会凭空消失，而是交出控制权。
+    // sceneEnabled 由启动覆盖层控制，见 MainActivity.onCreate 的 setContent。
+    SceneTransition(enabled = sceneEnabled) {
     Box(modifier = Modifier.fillMaxSize().background(Tokens.Paper)) {
         Scaffold(
             containerColor = Color.Transparent,
@@ -309,11 +327,30 @@ private fun AppRoot(focusId: String?, focusToken: Int) {
             // innerPadding 会在切页瞬间从「有底栏」跳到「无底栏」，
             // 所有带 padding(bottom) 的内容都会跟着上下弹一下。
             bottomBar = {
-                AppBottomBar(
-                    selected = tab,
-                    enabled = currentPage() != Page.EDIT,
-                    onSelect = { next -> switchTab(next) }
-                )
+                // v2.4：编辑页不显示底栏。
+                //
+                // 之前是「始终渲染、只把 enabled 关掉」，为的是让 Scaffold 的
+                // innerPadding 不跳变。但编辑页是整屏表单，底下压一条导航栏
+                // 既挤占输入空间，视觉上又像「表单上盖了层东西」。
+                //
+                // 跳变的代价用 AnimatedVisibility 抹平：底栏用同一个时长
+                // 收起/展开，而编辑页本身是 slideInVertically 从底部进来的，
+                // 两者方向一致，看起来就是「底栏被新页面顶掉了」。
+                AnimatedVisibility(
+                    visible = currentPage() != Page.EDIT,
+                    enter = slideInVertically(
+                        animationSpec = tween(Motion.DurPage, easing = Motion.EaseSoft)
+                    ) { it } + fadeIn(tween(Motion.DurFast)),
+                    exit = slideOutVertically(
+                        animationSpec = tween(Motion.DurPage, easing = Motion.EaseInOut)
+                    ) { it } + fadeOut(tween(Motion.DurFast))
+                ) {
+                    AppBottomBar(
+                        selected = tab,
+                        enabled = true,
+                        onSelect = { next -> switchTab(next) }
+                    )
+                }
             },
             floatingActionButton = {
                 AnimatedVisibility(
@@ -443,6 +480,7 @@ private fun AppRoot(focusId: String?, focusToken: Int) {
         }
     }
 
+    }
 
     // 清空全部数据的二次确认
     ConfirmOverlay(
@@ -472,34 +510,32 @@ private fun AppRoot(focusId: String?, focusToken: Int) {
 }
 
 /**
- * 底部导航（v2.3 完全重做）。
+ * 底部导航（v2.4：加了滑块）。
  *
- * ## 为什么又重做了一次
+ * ## 演化过程（教训都在这里）
  *
- * v2.1 是浮块指示器 + 弹性曲线，v2.2 是滑动下划线 + 细线分隔。两次都被
- * 反馈「动画奇怪」/「错位」，根因其实不在动画参数上：
+ * * v2.1：浮块指示器 + 弹性曲线 → 反馈「动画很奇怪」。68rpx 的实心块
+ *   比页面里绝大多数元素都重，且弹跳曲线过冲 9.78%，停下来的那一下像在抽搐。
+ * * v2.2：滑动下划线 + 细线分隔 → 反馈「错位」。下划线用 `padding(top)`
+ *   手算位置，改一次字号就偏一次。
+ * * v2.3：干脆全部删掉，只靠颜色区分 → 干净了，但少了「按下去有个东西
+ *   在走」的反馈。用户这次明确要「滑块动画」。
+ * * v2.4（现在）：把滑块做成**一枚浅色药丸**，铺在三个格子中间滑，而不是
+ *   压在格子外面。
  *
- * 1. **指示器本身是多余的**。浮块/下划线都在描述「你选了哪个」，
- *    而图标和文字已经用颜色说了一遍 —— 两套编码同时动，观众就会同时
- *    盯两个东西，任何一点相位差都会被读成「抖」。
- * 2. **视觉重量压在底栏**。120rpx 的实心浮块比页面里绝大多数元素都重，
- *    底栏喧宾夺主。
- * 3. **尺寸三套来源**：指示器的位置用手算 padding，图标用 48rpx 盒子，
- *    文字用 28rpx 行高，三者只要改一处就错位。
+ * ## 为什么这样不会重蹈 v2.1/v2.2 的覆辙
  *
- * ## 现在
+ * 1. **位置只有一个来源**：药丸的 x 由 `BoxWithConstraints` 拿到的 `cellWidth`
+ *    乘索引得出，不参与任何 padding 手算；格子自己也是 `weight(1f)`，
+ *    两者共用同一个宽度基准，永远对齐。
+ * 2. **不抢主体**：药丸是 `brandTint` 浅色 + 无描边，视觉重量远低于页面里的
+ *    卡片；图标和文字仍然承担主要的「选中」编码。
+ * 3. **曲线不过冲**：用 `Motion.tab()`（线性缓出，260→220ms），到位置就停住，
+ *    没有回弹。回弹在底栏这种「高频、低信息量」的控件上只会显得毛躁。
+ * 4. **和内容同一节奏**：药丸滑动时长与页转场（`Motion.DurPage`）分开配置，
+ *    但都落在 200–300ms 区间，联动起来不会一快一慢。
  *
- * 用**一行文字 + 一个图标**的状态变化来表达选中，不再有任何滑动指示器：
- *
- * * 选中项：图标变成品牌色 + 文字变成品牌色 + 字重 SemiBold + 图标从
- *   InkMuted 渐变到 Brand（`animateFloatAsState` 只驱动颜色，不驱动尺寸，
- *   所以永远不会出现「文字宽度变了导致居中抖」）；
- * * 未选中项：InkSecondary，字重 Normal 但保持与 SemiBold **等宽**的
- *   排版（同一档字号、同一行高），靠颜色区分。
- *
- * 布局只有一套尺寸推导：图标盒 `iconBox` → 间隙 `gap` → 文字行高
- * `labelHeight`，整组 `Arrangement.Center` 落在 112rpx 的轨道里，
- * 上下留白左右对称。分隔线仍是 2rpx，和卡片描边同一套线条语言。
+ * 编辑页不显示底栏（`Scaffold` 里判断），见 AppRoot。
  */
 @Composable
 private fun AppBottomBar(
@@ -508,8 +544,13 @@ private fun AppBottomBar(
     enabled: Boolean = true
 ) {
     val m = LocalMetrics.current
+    val p = LocalPalette.current
+    val reduced = LocalReducedMotion.current
     val tabs = Tab.values()
     val hairline = m.rpx(2)
+    val barHeight = m.rpx(112)
+    // 药丸高度比格子略矮，上下留出「浮在格子里」的余量
+    val pillHeight = m.rpx(88)
 
     Column(
         modifier = Modifier
@@ -525,20 +566,47 @@ private fun AppBottomBar(
             }
             .navigationBarsPadding()
     ) {
-        Row(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(m.rpx(112)),
-            verticalAlignment = Alignment.CenterVertically
+                .height(barHeight)
         ) {
-            tabs.forEach { item ->
-                BottomTabItem(
-                    tab = item,
-                    active = item == selected,
-                    enabled = enabled,
-                    onClick = { onSelect(item) },
-                    modifier = Modifier.weight(1f)
-                )
+            val density = androidx.compose.ui.platform.LocalDensity.current
+            val cellWidth = maxWidth / tabs.size
+            // 药丸比格子窄一点，左右各留 12rpx，滑到位时和格子居中
+            val pillInset = m.rpx(12)
+            val pillWidth = cellWidth - pillInset * 2
+            val pillTarget = with(density) {
+                (pillInset + cellWidth * tabs.indexOf(selected)).toPx()
+            }
+            val pillTop = (barHeight - pillHeight) / 2
+
+            val pillX = animateFloatAsState(
+                targetValue = pillTarget,
+                animationSpec = if (reduced) tween(0) else Motion.tab(reduced),
+                label = "tabPill"
+            )
+
+            Box(
+                modifier = Modifier
+                    .padding(start = pillInset, top = pillTop)
+                    .graphicsLayer { translationX = pillX.value }
+                    .width(pillWidth)
+                    .height(pillHeight)
+                    .clip(RoundedCornerShape(m.radiusPill))
+                    .background(p.brandTint)
+            )
+
+            Row(modifier = Modifier.fillMaxSize()) {
+                tabs.forEach { item ->
+                    BottomTabItem(
+                        tab = item,
+                        active = item == selected,
+                        enabled = enabled,
+                        onClick = { onSelect(item) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
         }
     }
@@ -560,6 +628,7 @@ private fun BottomTabItem(
     modifier: Modifier = Modifier
 ) {
     val m = LocalMetrics.current
+    val p = LocalPalette.current
     val reduced = LocalReducedMotion.current
     val interaction = rememberPressInteraction()
 
@@ -569,7 +638,7 @@ private fun BottomTabItem(
         animationSpec = Motion.fast(reduced),
         label = "tabBlend"
     )
-    val tint = lerp(Tokens.InkSecondary, Tokens.Brand, blend.value)
+    val tint = lerp(Tokens.InkSecondary, p.brand, blend.value)
     val shape = RoundedCornerShape(m.radiusMd)
 
     Column(
@@ -612,6 +681,7 @@ private fun BottomTabItem(
 @Composable
 private fun CreateFab(onClick: () -> Unit) {
     val m = LocalMetrics.current
+    val p = LocalPalette.current
     val interaction = rememberPressInteraction()
     Box(
         modifier = Modifier
@@ -621,7 +691,7 @@ private fun CreateFab(onClick: () -> Unit) {
             .pressScale(interaction, Motion.ScaleCard)
             .appShadow(2, CircleShape)
             .clip(CircleShape)
-            .background(Tokens.BrandGradient)
+            .background(p.brandGradient)
             .rippleClick(interaction, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {

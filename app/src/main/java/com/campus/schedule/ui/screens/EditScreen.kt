@@ -52,6 +52,7 @@ import com.campus.schedule.ui.components.rippleClick
 import com.campus.schedule.ui.components.staggerEnter
 import com.campus.schedule.ui.icons.AppIcons
 import com.campus.schedule.ui.theme.LocalMetrics
+import com.campus.schedule.ui.theme.LocalPalette
 import com.campus.schedule.ui.theme.Motion
 import com.campus.schedule.ui.theme.Tokens
 import java.util.Calendar
@@ -334,6 +335,7 @@ private fun TopBar(
     modifier: Modifier = Modifier
 ) {
     val m = LocalMetrics.current
+    val p = LocalPalette.current
     val interaction = rememberPressInteraction()
     Row(
         modifier = modifier
@@ -354,7 +356,7 @@ private fun TopBar(
             Icon(
                 painter = painterResource(AppIcons.chevronLeftBrand),
                 contentDescription = "返回",
-                tint = Tokens.Brand,
+                tint = p.brand,
                 modifier = Modifier.size(m.iconSm)
             )
         }
@@ -404,6 +406,7 @@ private fun DateTimePicker(
     onChange: (Long) -> Unit
 ) {
     val m = LocalMetrics.current
+    val p = LocalPalette.current
     val context = LocalContext.current
 
     Row(
@@ -433,7 +436,7 @@ private fun DateTimePicker(
                 Icon(
                     painter = painterResource(AppIcons.calendar),
                     contentDescription = null,
-                    tint = Tokens.Brand,
+                    tint = p.brand,
                     modifier = Modifier.size(m.iconSm)
                 )
             }
@@ -462,7 +465,7 @@ private fun DateTimePicker(
                     Icon(
                         painter = painterResource(AppIcons.chevronDownBrand),
                         contentDescription = null,
-                        tint = Tokens.Brand,
+                        tint = p.brand,
                         modifier = Modifier.size(m.iconSm)
                     )
                 }

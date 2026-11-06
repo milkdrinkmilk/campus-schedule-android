@@ -28,8 +28,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -43,7 +41,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -71,7 +68,6 @@ import com.campus.schedule.ui.components.PERIODS
 import com.campus.schedule.ui.components.TimelineDayCell
 import com.campus.schedule.ui.components.TimelineRow
 import com.campus.schedule.ui.components.TimelineTimeRail
-import com.campus.schedule.ui.components.TodayTimeline
 import com.campus.schedule.ui.components.WeekGrid
 import com.campus.schedule.ui.components.WeekStrip
 import com.campus.schedule.ui.components.clickableNoRipple
@@ -81,6 +77,7 @@ import com.campus.schedule.ui.components.rememberPressInteraction
 import com.campus.schedule.ui.components.staggerEnter
 import com.campus.schedule.ui.icons.AppIcons
 import com.campus.schedule.ui.theme.LocalMetrics
+import com.campus.schedule.ui.theme.LocalPalette
 import com.campus.schedule.ui.theme.LocalReducedMotion
 import com.campus.schedule.ui.theme.Motion
 import com.campus.schedule.ui.theme.Tokens
@@ -292,6 +289,7 @@ private fun MastheadBlock(
     onToday: () -> Unit
 ) {
     val m = LocalMetrics.current
+    val p = LocalPalette.current
     val reduced = LocalReducedMotion.current
     val weekLabel = "第 ${CoreDate.isoWeekNumber(weekStart)} 周"
 
@@ -333,7 +331,7 @@ private fun MastheadBlock(
                             Text(
                                 text = label,
                                 style = m.meta.copy(
-                                    color = Tokens.BrandDeep,
+                                    color = p.brandDeep,
                                     fontWeight = FontWeight.SemiBold
                                 ),
                                 maxLines = 1
@@ -375,6 +373,7 @@ private fun MastheadBlock(
 @Composable
 private fun ScopeSwitch(scope: Int, onSelect: (Int) -> Unit) {
     val m = LocalMetrics.current
+    val p = LocalPalette.current
     val reduced = LocalReducedMotion.current
     val labels = listOf("周", "月")
 
@@ -416,7 +415,7 @@ private fun ScopeSwitch(scope: Int, onSelect: (Int) -> Unit) {
                         .height(m.rpx(4))
                         .graphicsLayer { alpha = weight.value }
                         .clip(RoundedCornerShape(m.rpx(2)))
-                        .background(Tokens.Brand)
+                        .background(p.brand)
                 )
             }
         }
@@ -524,6 +523,7 @@ private fun MonthDayCell(
     modifier: Modifier = Modifier
 ) {
     val m = LocalMetrics.current
+    val p = LocalPalette.current
     val interaction = rememberPressInteraction()
     val circle = 56
     val shape = CircleShape
@@ -539,8 +539,8 @@ private fun MonthDayCell(
                 .clip(shape)
                 .then(
                     when {
-                        selected -> Modifier.background(Tokens.Brand)
-                        today -> Modifier.background(Tokens.BrandTint)
+                        selected -> Modifier.background(p.brand)
+                        today -> Modifier.background(p.brandTint)
                         else -> Modifier
                     }
                 )
@@ -555,7 +555,7 @@ private fun MonthDayCell(
                     lineHeight = m.sp(34),
                     color = when {
                         selected -> Tokens.PaperRaised
-                        today -> Tokens.BrandDeep
+                        today -> p.brandDeep
                         inMonth -> Tokens.InkSecondary
                         else -> Tokens.InkFaint
                     },
@@ -667,169 +667,144 @@ private fun TimelineModeContent(
     onCreateNew: () -> Unit
 ) {
     val m = LocalMetrics.current
+    val p = LocalPalette.current
+    val reduced = LocalReducedMotion.current
     val selectedDate = state.selectedDate
+    val isToday = CoreDate.isToday(selectedDate, now)
 
-    // 时间轴只响应 selectedDate —— 点周条/月历换一天、或用左右箭头换一天，
-    // 都只会看到「这一天的列」横移进来，视图模式不变。
-    // 以「今天」为基准页：第 PAGER_CENTER 页就是今天，前后各 180 天。
-    val todayStart = remember { state.todayStart() }
-    val pagerState = rememberPagerState(
-        initialPage = PAGER_CENTER,
-        pageCount = { PAGER_COUNT }
-    )
-
-    // 两个方向各只保留一条同步路径，靠 lastSyncedPage 切断回环：
+    // v2.4：这里从「时间轴」改成了「每日事务」。
     //
-    // * 外部日期变了（点周条、点月历、按左右箭头）→ 直接跳到对应页；
-    //   scrollToPage 而不是 animateScrollToPage，避免和用户惯性滑动抢控制权。
-    // * 用户滑动 pager 停下 → 把页码换算成日期写回去。写回之后 selectedDate
-    //   变了，上面那条 LaunchedEffect 会再算一次目标页，此时算出来的页号
-    //   恰好等于 lastSyncedPage，于是直接返回，不会来回弹。
-    val lastSyncedPage = remember { mutableIntStateOf(pagerState.currentPage) }
-
-    LaunchedEffect(selectedDate) {
-        val target = PAGER_CENTER + CoreDate.daysBetween(todayStart, selectedDate).toInt()
-        val clamped = target.coerceIn(0, PAGER_COUNT - 1)
-        if (clamped != pagerState.currentPage) {
-            lastSyncedPage.intValue = clamped
-            pagerState.scrollToPage(clamped)
+    // 原来的做法是 HorizontalPager 横排 361 天，每页里面上半截是本地时间刻度
+    // （TodayTimeline）、下半截又铺一遍同一批数据（TimelineRow）。同一件事在
+    // 屏幕上出现两次，还带一堆空刻度 —— 用户反馈要的就是「只看今天做什么」。
+    //
+    // 现在：一次只渲染一天，`entries` 已经由 ViewModel 按 `startTime` 升序排好，
+    // 直接按序铺成清单。翻天的两个箭头保留，点周条/月历换日期同样生效。
+    //
+    // 截面切换用「旧的一天上移淡出、新的一天从下方浮起」，配合视图本身的
+    // AnimatedContent（view-switch），两层节奏保持同一时长，不会互相打架。
+    AnimatedContent(
+        targetState = selectedDate,
+        transitionSpec = {
+            val forward = targetState > initialState
+            if (reduced) {
+                fadeIn(tween(Motion.DurFast)) togetherWith fadeOut(tween(Motion.DurExit))
+            } else {
+                (fadeIn(tween(Motion.DurBase)) +
+                    slideInVertically(
+                        animationSpec = tween(Motion.DurBase, easing = Motion.EaseSoft)
+                    ) { if (forward) it / 12 else -it / 12 }) togetherWith
+                    (fadeOut(tween(Motion.DurExit)) +
+                        slideOutVertically(
+                            animationSpec = tween(Motion.DurExit, easing = Motion.EaseInOut)
+                        ) { if (forward) -it / 16 else it / 16 })
+            }
+        },
+        label = "day-switch",
+        modifier = Modifier.fillMaxSize()
+    ) { day ->
+        // 每一页都用自己这一天算条目，切天时不会先看到旧数据。
+        // 排序已经在 `state.visibleItems` 里做过（按「是否已结束 → 开始时间」），
+        // 这里只按日期过滤，顺序保持原样。
+        val dayEntries = remember(entries, day) {
+            val ids = state.items
+                .filter { CoreDate.isSameDay(it.startTime, day) }
+                .mapTo(HashSet()) { it.id }
+            entries.filter { it.id in ids }
         }
-    }
+        val dayCount = dayEntries.size
 
-    LaunchedEffect(pagerState) {
-        snapshotFlow { pagerState.settledPage }.collect { settled ->
-            if (settled == lastSyncedPage.intValue) return@collect
-            lastSyncedPage.intValue = settled
-            val day = CoreDate.addDays(todayStart, settled - PAGER_CENTER)
-            if (!CoreDate.isSameDay(day, selectedDate)) onSelectDate(day)
-        }
-    }
-
-    Column(modifier = Modifier.fillMaxSize()) {
-        Row(
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = m.pagePadding),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = m.pagePadding)
         ) {
-            DateNavButton(
-                icon = AppIcons.chevronLeft,
-                label = "前一天",
-                enabled = true,
-                onClick = onPrevDay
-            )
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = CoreDate.formatDate(selectedDate),
-                    style = m.h3.copy(color = Tokens.Ink, fontWeight = FontWeight.Bold),
-                    maxLines = 1
-                )
-                Text(
-                    text = if (CoreDate.isToday(selectedDate, now)) "今天" else "按天查看待办",
-                    style = m.micro.copy(
-                        fontSize = m.sp(24),
-                        lineHeight = m.sp(32),
-                        color = if (CoreDate.isToday(selectedDate, now)) Tokens.BrandDeep else Tokens.InkMuted
-                    ),
-                    maxLines = 1
-                )
-            }
-            DateNavButton(
-                icon = AppIcons.chevronRight,
-                label = "后一天",
-                enabled = true,
-                onClick = onNextDay
-            )
-        }
-
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
-            // 相邻页保持组合，翻页时不会先白一帧再填内容
-            beyondBoundsPageCount = 1,
-            pageSpacing = m.rpx(16)
-        ) { page ->
-            val dayStart = CoreDate.addDays(todayStart, page - PAGER_CENTER)
-            val pageItems = remember(dayStart, state.items) {
-                state.items.filter { CoreDate.isSameDay(it.startTime, dayStart) }
+            if (state.conflictPairs.isNotEmpty()) {
+                ConflictBlock(state = state, onToggle = onToggleConflict)
             }
 
-            Column(
+            // 日期导航：左箭头 · 日期 · 右箭头，和清单左对齐
+            Row(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = m.pagePadding)
+                    .fillMaxWidth()
+                    .padding(top = m.rpx(4), bottom = m.rpx(14)),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                if (state.conflictPairs.isNotEmpty()) {
-                    ConflictBlock(state = state, onToggle = onToggleConflict)
-                }
-
-                DayHeaderRow(
-                    count = pageItems.size,
-                    filter = state.filter,
-                    onFilterChange = onFilterChange
+                DateNavButton(
+                    icon = AppIcons.chevronLeft,
+                    label = "前一天",
+                    enabled = true,
+                    onClick = onPrevDay
                 )
-
-                TodayTimeline(
-                    dayStart = dayStart,
-                    items = pageItems,
-                    nowMillis = now,
-                    onClick = onItemClick,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                if (pageItems.isEmpty()) {
-                    EmptyState(
-                        title = "这一天还没有安排",
-                        body = "点右下角的按钮新建一条，它会出现在时间轴对应的时间上。",
-                        lineArt = true,
-                        actions = {
-                            AppButton(
-                                text = "新建日程",
-                                onClick = onCreateNew,
-                                style = ButtonStyle.SECONDARY,
-                                block = false
-                            )
-                        }
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = CoreDate.formatDate(day),
+                        style = m.h3.copy(color = Tokens.Ink, fontWeight = FontWeight.Bold),
+                        maxLines = 1
+                    )
+                    Text(
+                        text = if (CoreDate.isToday(day, now)) "今天" else CoreDate.formatMonthDay(day),
+                        style = m.micro.copy(
+                            fontSize = m.sp(24),
+                            lineHeight = m.sp(32),
+                            color = if (CoreDate.isToday(day, now)) p.brandDeep else Tokens.InkMuted
+                        ),
+                        modifier = Modifier.padding(top = m.rpx(2)),
+                        maxLines = 1
                     )
                 }
+                DateNavButton(
+                    icon = AppIcons.chevronRight,
+                    label = "后一天",
+                    enabled = true,
+                    onClick = onNextDay
+                )
+            }
 
-                // 原有卡片列表保留在同一天之下，作为「详情」层：
-                // 上面是时间刻度，下面是可读的文字条目，两种信息密度互补。
-                if (entriesAreForSelected(entries, pageItems)) {
-                    entries.forEachIndexed { index, entry ->
-                        val item = pageItems.firstOrNull { it.id == entry.id }
-                        TimelineRow(
-                            entry = entry,
-                            onClick = { item?.let(onItemClick) },
-                            onToggleStar = { item?.let(onToggleStar) },
-                            modifier = Modifier
-                                .staggerEnter(tracker, entry.id, index)
-                                .padding(bottom = m.rpx(12))
+            DayHeaderRow(
+                count = dayCount,
+                filter = state.filter,
+                onFilterChange = onFilterChange
+            )
+
+            if (dayCount == 0) {
+                EmptyState(
+                    title = "这一天还没有安排",
+                    body = "点右下角的按钮新建一条，它会按开始时间排进这一天的清单。",
+                    lineArt = true,
+                    actions = {
+                        AppButton(
+                            text = "新建日程",
+                            onClick = onCreateNew,
+                            style = ButtonStyle.SECONDARY,
+                            block = false
                         )
                     }
+                )
+            } else {
+                dayEntries.forEachIndexed { index, entry ->
+                    val item = state.items.firstOrNull { it.id == entry.id }
+                    TimelineRow(
+                        entry = entry,
+                        onClick = { item?.let(onItemClick) },
+                        onToggleStar = { item?.let(onToggleStar) },
+                        modifier = Modifier
+                            .staggerEnter(tracker, entry.id, index)
+                            .padding(bottom = m.rpx(12))
+                    )
                 }
-
-                Spacer(Modifier.height(m.rpx(96)))
             }
+
+            Spacer(Modifier.height(m.rpx(96)))
         }
     }
 }
 
-private fun entriesAreForSelected(
-    entries: List<com.campus.schedule.ui.components.TimelineEntry>,
-    pageItems: List<ScheduleItem>
-): Boolean {
-    if (pageItems.isEmpty()) return false
-    val ids = pageItems.map { it.id }.toSet()
-    return entries.any { it.id in ids }
-}
-
-private const val PAGER_CENTER = 180
-private const val PAGER_COUNT = 361
 
 /** 时间轴左右翻天的圆形箭头按钮（92rpx 触摸尺寸 + 线条风格）。 */
 @Composable
@@ -935,12 +910,13 @@ private fun FilterChip(
     onClick: () -> Unit
 ) {
     val m = LocalMetrics.current
+    val p = LocalPalette.current
     val interaction = rememberPressInteraction()
     val shape = RoundedCornerShape(m.radiusPill)
     Box(
         modifier = Modifier
             .clip(shape)
-            .background(if (active) Tokens.BrandTint else Color.Transparent)
+            .background(if (active) p.brandTint else Color.Transparent)
             .pressHighlight(interaction, shape)
             .clickableNoRipple(interaction, onClick = onClick)
             .padding(horizontal = m.rpx(20), vertical = m.rpx(10)),
@@ -949,7 +925,7 @@ private fun FilterChip(
         Text(
             text = text,
             style = m.meta.copy(
-                color = if (active) Tokens.BrandDeep else Tokens.InkMuted,
+                color = if (active) p.brandDeep else Tokens.InkMuted,
                 fontWeight = if (active) FontWeight.Bold else FontWeight.Normal
             ),
             maxLines = 1

@@ -4,6 +4,8 @@ import android.animation.ValueAnimator
 import android.content.Context
 import android.database.ContentObserver
 import android.provider.Settings
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.lightColorScheme
@@ -15,6 +17,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 
@@ -23,6 +27,9 @@ val LocalMetrics = staticCompositionLocalOf { Metrics(0.5f) }
 
 /** 是否开启「移除动画」（系统级减弱动效）。 */
 val LocalReducedMotion = staticCompositionLocalOf { false }
+
+/** 当前生效的主色板（v2.4：按周轮换，见 [Palettes]）。 */
+val LocalPalette = staticCompositionLocalOf { Palettes.all.first() }
 
 /**
  * 读取系统「移除动画」设置。
@@ -82,6 +89,10 @@ private fun readReducedMotion(context: Context): Boolean {
  * 应用主题。
  *
  * 只提供浅色主题，与小程序的蓝白 iOS 观感一致。
+ *
+ * v2.4：主色按周轮换（[Palettes]）。色板通过 [LocalPalette] 下发，
+ * 组件要用主色时读它，而不是写死 `Tokens.Brand`。轮换只换色相不动布局，
+ * 所以形状记忆一直是连续的；切换发生在跨周时，用 600ms 的颜色过渡抹平。
  */
 @Composable
 fun CampusScheduleTheme(content: @Composable () -> Unit) {
@@ -92,15 +103,42 @@ fun CampusScheduleTheme(content: @Composable () -> Unit) {
     val metrics = remember(scale) { Metrics(scale) }
     val reduced = rememberReducedMotion()
 
+    val target = remember { Palettes.of(System.currentTimeMillis()) }
+    val brand by animateColorAsState(
+        targetValue = target.brand,
+        animationSpec = tween(600),
+        label = "paletteBrand"
+    )
+    val brandStrong by animateColorAsState(
+        targetValue = target.brandStrong,
+        animationSpec = tween(600),
+        label = "paletteBrandStrong"
+    )
+    val brandDeep by animateColorAsState(
+        targetValue = target.brandDeep,
+        animationSpec = tween(600),
+        label = "paletteBrandDeep"
+    )
+    val brandTint by animateColorAsState(
+        targetValue = target.brandTint,
+        animationSpec = tween(600),
+        label = "paletteBrandTint"
+    )
+
+    val live = remember(brand, brandStrong, brandDeep, brandTint) {
+        Palette(brand = brand, brandStrong = brandStrong, brandDeep = brandDeep, brandTint = brandTint)
+    }
+
     CompositionLocalProvider(
         LocalMetrics provides metrics,
-        LocalReducedMotion provides reduced
+        LocalReducedMotion provides reduced,
+        LocalPalette provides live
     ) {
         MaterialTheme(
             colorScheme = lightColorScheme(
-                primary = Tokens.Brand,
+                primary = live.brand,
                 onPrimary = Tokens.PaperRaised,
-                secondary = Tokens.BrandStrong,
+                secondary = live.brandStrong,
                 background = Tokens.Paper,
                 onBackground = Tokens.Ink,
                 surface = Tokens.PaperRaised,

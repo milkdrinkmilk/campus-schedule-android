@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.animation.core.animateFloatAsState
 import com.campus.schedule.ui.icons.AppIcons
 import com.campus.schedule.ui.theme.LocalMetrics
+import com.campus.schedule.ui.theme.LocalPalette
 import com.campus.schedule.ui.theme.LocalReducedMotion
 import com.campus.schedule.ui.theme.Motion
 import com.campus.schedule.ui.theme.Tokens
@@ -145,6 +146,7 @@ fun SectionHeader(
     action: @Composable (() -> Unit)? = null
 ) {
     val m = LocalMetrics.current
+    val p = LocalPalette.current
     Column(modifier = modifier.padding(bottom = m.rpx(24))) {
         // 眉标前的短线用 Alignment.CenterVertically 与文字行高中心对齐；
         // 线高 4rpx 远小于行高 32rpx，靠 center 才不会看起来「挂着」
@@ -157,7 +159,7 @@ fun SectionHeader(
                     .width(m.rpx(32))
                     .height(m.rpx(4))
                     .clip(RoundedCornerShape(m.rpx(4)))
-                    .background(Tokens.BrandGradient)
+                    .background(p.brandGradient)
             )
             Text(text = eyebrow, style = m.kicker, maxLines = 1)
         }
@@ -208,17 +210,20 @@ enum class TagTone {
 }
 
 @Composable
-private fun tagColors(tone: TagTone): Pair<Color, Color> = when (tone) {
-    TagTone.NEUTRAL -> Tokens.PaperSunken to Tokens.InkSecondary
-    TagTone.UPCOMING -> Tokens.BrandTint to Tokens.BrandDeep
-    TagTone.ONGOING -> Tokens.BrandTint to Tokens.BrandDeep
-    TagTone.ENDED -> Tokens.PaperSunken to Tokens.InkSecondary
-    TagTone.CANCELLED -> Tokens.Transparent to Tokens.InkMuted
-    TagTone.PUBLIC -> Tokens.GoldTint to Tokens.GoldText
-    TagTone.GROUP -> Tokens.SageTint to Tokens.SageText
-    TagTone.FAVORITE -> Tokens.GoldTint to Tokens.GoldText
-    TagTone.WARNING -> Tokens.GoldTint to Tokens.GoldText
-    TagTone.DANGER -> Tokens.DangerTint to Tokens.Danger
+private fun tagColors(tone: TagTone): Pair<Color, Color> {
+    val p = LocalPalette.current
+    return when (tone) {
+        TagTone.NEUTRAL -> Tokens.PaperSunken to Tokens.InkSecondary
+        TagTone.UPCOMING -> p.brandTint to p.brandDeep
+        TagTone.ONGOING -> p.brandTint to p.brandDeep
+        TagTone.ENDED -> Tokens.PaperSunken to Tokens.InkSecondary
+        TagTone.CANCELLED -> Tokens.Transparent to Tokens.InkMuted
+        TagTone.PUBLIC -> Tokens.GoldTint to Tokens.GoldText
+        TagTone.GROUP -> Tokens.SageTint to Tokens.SageText
+        TagTone.FAVORITE -> Tokens.GoldTint to Tokens.GoldText
+        TagTone.WARNING -> Tokens.GoldTint to Tokens.GoldText
+        TagTone.DANGER -> Tokens.DangerTint to Tokens.Danger
+    }
 }
 
 /** 小标签（`.tag`）。 */
@@ -238,7 +243,7 @@ fun Tag(
         modifier = modifier
             .clip(RoundedCornerShape(m.radiusXs))
             .background(bg)
-            .padding(horizontal = m.rpx(14), vertical = m.rpx(6)),
+            .padding(horizontal = m.rpx(16), vertical = m.rpx(10)),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(m.rpx(6))
     ) {
@@ -426,6 +431,7 @@ fun CardHeader(
     trailing: (@Composable () -> Unit)? = null
 ) {
     val m = LocalMetrics.current
+    val p = LocalPalette.current
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -445,7 +451,7 @@ fun CardHeader(
                 style = m.micro.copy(
                     fontSize = m.sp(24),
                     lineHeight = m.sp(26),
-                    color = Tokens.BrandDeep,
+                    color = p.brandDeep,
                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                 ),
                 maxLines = 1
@@ -482,6 +488,7 @@ fun AppButton(
     leadingIcon: (@Composable () -> Unit)? = null
 ) {
     val m = LocalMetrics.current
+    val p = LocalPalette.current
     val interaction = rememberPressInteraction()
 
     val minHeight = if (small) m.rpx(88) else m.rpx(96)
@@ -489,7 +496,7 @@ fun AppButton(
 
     val fg = when (style) {
         ButtonStyle.PRIMARY -> Tokens.PaperRaised
-        ButtonStyle.SECONDARY -> Tokens.BrandDeep
+        ButtonStyle.SECONDARY -> p.brandDeep
         ButtonStyle.GHOST -> Tokens.InkSecondary
         ButtonStyle.DANGER -> Tokens.Danger
         ButtonStyle.DISABLED -> Tokens.InkMuted
@@ -510,7 +517,7 @@ fun AppButton(
             .clip(shape)
             .then(
                 when (style) {
-                    ButtonStyle.PRIMARY -> Modifier.background(Tokens.BrandGradient)
+                    ButtonStyle.PRIMARY -> Modifier.background(p.brandGradient)
                     // 次要按钮改用「纸色 + 2rpx 墨线」，和卡片同一套线条语言；
                     // 原来用 PaperTint 描边，白底上几乎看不见。
                     ButtonStyle.SECONDARY -> Modifier
@@ -565,6 +572,7 @@ fun LocateButton(
     trailingIcon: (@Composable () -> Unit)? = null
 ) {
     val m = LocalMetrics.current
+    val p = LocalPalette.current
     val reduced = LocalReducedMotion.current
     val interaction = rememberPressInteraction()
     val shape = RoundedCornerShape(m.radiusPill)
@@ -593,7 +601,7 @@ fun LocateButton(
             modifier = Modifier
                 .matchParentSize()
                 .graphicsLayer { alpha = overlay.value }
-                .background(Tokens.BrandGradient)
+                .background(p.brandGradient)
         )
         Row(
             modifier = Modifier
@@ -608,7 +616,7 @@ fun LocateButton(
             Text(
                 text = text,
                 style = m.body.copy(
-                    color = if (active) Tokens.PaperRaised else Tokens.BrandDeep,
+                    color = if (active) Tokens.PaperRaised else p.brandDeep,
                     fontWeight = if (active) {
                         androidx.compose.ui.text.font.FontWeight.Bold
                     } else {
@@ -640,6 +648,7 @@ fun SegmentedSwitch(
     modifier: Modifier = Modifier
 ) {
     val m = LocalMetrics.current
+    val p = LocalPalette.current
     val reduced = LocalReducedMotion.current
     val shape = RoundedCornerShape(m.radiusPill)
 
@@ -666,7 +675,7 @@ fun SegmentedSwitch(
                     .width(indicatorWidth)
                     .fillMaxHeight()
                     .clip(shape)
-                    .background(Tokens.BrandGradient)
+                    .background(p.brandGradient)
                     .graphicsLayer { translationX = offset.value }
             )
             Row(modifier = Modifier.fillMaxSize()) {
@@ -713,6 +722,7 @@ fun EmptySeal(
     variant: SealVariant = SealVariant.DOT
 ) {
     val m = LocalMetrics.current
+    val p = LocalPalette.current
     val size = m.rpx(112)
     Box(
         modifier = modifier
@@ -727,7 +737,7 @@ fun EmptySeal(
                     .align(Alignment.Center)
                     .size(m.rpx(36))
                     .clip(CircleShape)
-                    .background(Tokens.Brand)
+                    .background(p.brand)
             )
             SealVariant.ERROR -> Box(
                 modifier = Modifier
@@ -735,7 +745,7 @@ fun EmptySeal(
                     .width(m.rpx(56))
                     .height(m.rpx(4))
                     .clip(RoundedCornerShape(m.rpx(4)))
-                    .background(Tokens.Brand)
+                    .background(p.brand)
             )
             SealVariant.LOCKED -> Box(
                 modifier = Modifier
@@ -743,7 +753,7 @@ fun EmptySeal(
                     .width(m.rpx(38))
                     .height(m.rpx(30))
                     .clip(RoundedCornerShape(m.rpx(8)))
-                    .border(m.rpx(6), Tokens.BrandDeep, RoundedCornerShape(m.rpx(8)))
+                    .border(m.rpx(6), p.brandDeep, RoundedCornerShape(m.rpx(8)))
             )
         }
     }
@@ -806,8 +816,11 @@ fun EmptyState(
 @Composable
 private fun EmptyLineArt() {
     val m = LocalMetrics.current
+    val p = LocalPalette.current
     val reduced = LocalReducedMotion.current
     val progress = remember { Animatable(0f) }
+    // 画笔里的进度叫 grow，避免和色板局部变量 p 撞名
+    val grow = progress.value
 
     LaunchedEffect(reduced) {
         if (reduced) {
@@ -825,7 +838,6 @@ private fun EmptyLineArt() {
     ) {
         val w = size.width
         val h = size.height
-        val p = progress.value
         val hair = m.rpx(2).toPx()
         val strokeW = hair * 1.6f
 
@@ -847,7 +859,7 @@ private fun EmptyLineArt() {
                 )
             )
         }
-        drawGrowing(card, p, Tokens.Brand.copy(alpha = 0.55f), strokeW)
+        drawGrowing(card, grow, p.brand.copy(alpha = 0.55f), strokeW)
 
         // 顶部一条分隔线
         val headerY = top + (bottom - top) * 0.30f
@@ -855,7 +867,7 @@ private fun EmptyLineArt() {
             moveTo(left + (right - left) * 0.16f, headerY)
             lineTo(right - (right - left) * 0.16f, headerY)
         }
-        drawGrowing(header, (p - 0.25f).coerceIn(0f, 1f) / 0.75f, Tokens.Brand, strokeW)
+        drawGrowing(header, (grow - 0.25f).coerceIn(0f, 1f) / 0.75f, p.brand, strokeW)
 
         // 两条「待办」短线
         val lineX0 = left + (right - left) * 0.16f
@@ -863,13 +875,13 @@ private fun EmptyLineArt() {
             moveTo(lineX0, top + (bottom - top) * 0.55f)
             lineTo(left + (right - left) * 0.62f, top + (bottom - top) * 0.55f)
         }
-        drawGrowing(first, (p - 0.45f).coerceIn(0f, 1f) / 0.55f, Tokens.InkFaint, strokeW)
+        drawGrowing(first, (grow - 0.45f).coerceIn(0f, 1f) / 0.55f, Tokens.InkFaint, strokeW)
 
         val second = Path().apply {
             moveTo(lineX0, top + (bottom - top) * 0.72f)
             lineTo(left + (right - left) * 0.46f, top + (bottom - top) * 0.72f)
         }
-        drawGrowing(second, (p - 0.65f).coerceIn(0f, 1f) / 0.35f, Tokens.InkFaint, strokeW)
+        drawGrowing(second, (grow - 0.65f).coerceIn(0f, 1f) / 0.35f, Tokens.InkFaint, strokeW)
     }
 }
 
@@ -963,10 +975,11 @@ fun EntryRow(
     iconRes: Int? = null,
     count: String? = null,
     value: String? = null,
-    iconTint: Color = Tokens.Brand,
+    iconTint: Color? = null,
     iconBackground: Color = Tokens.PaperTint
 ) {
     val m = LocalMetrics.current
+    val p = LocalPalette.current
     val interaction = rememberPressInteraction()
 
     // 行内每一件元素都用同一套高度（图标块 56、文字行高 46、箭头 28），
@@ -979,7 +992,7 @@ fun EntryRow(
             .clip(RoundedCornerShape(m.radiusLg))
             .pressHighlight(interaction, RoundedCornerShape(m.radiusLg))
             .rippleClick(interaction, onClick = onClick)
-            .padding(horizontal = m.rpx(4), vertical = m.rpx(8)),
+            .padding(horizontal = m.rpx(20), vertical = m.rpx(14)),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(m.rpx(16))
     ) {
@@ -995,7 +1008,7 @@ fun EntryRow(
                 Icon(
                     painter = painterResource(iconRes),
                     contentDescription = null,
-                    tint = iconTint,
+                    tint = iconTint ?: p.brand,
                     modifier = Modifier.size(m.rpx(32))
                 )
             }
@@ -1079,7 +1092,7 @@ fun StatsRow(
             .clip(shape)
             .background(Tokens.PaperRaised)
             .border(m.rpx(2), Tokens.Line, shape)
-            .padding(vertical = m.rpx(24), horizontal = m.rpx(8)),
+            .padding(vertical = m.rpx(26), horizontal = m.rpx(20)),
         verticalAlignment = Alignment.CenterVertically
     ) {
         stats.forEachIndexed { index, (value, label) ->
@@ -1130,6 +1143,7 @@ fun IdentityCard(
     modifier: Modifier = Modifier
 ) {
     val m = LocalMetrics.current
+    val p = LocalPalette.current
     val shape = RoundedCornerShape(m.radiusLg)
     val interaction = rememberPressInteraction()
 
@@ -1154,7 +1168,7 @@ fun IdentityCard(
             modifier = Modifier
                 .size(m.rpx(104))
                 .clip(RoundedCornerShape(m.rpx(32)))
-                .background(Tokens.BrandGradient),
+                .background(p.brandGradient),
             contentAlignment = Alignment.Center
         ) {
             Text(

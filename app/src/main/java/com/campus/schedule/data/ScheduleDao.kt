@@ -47,4 +47,19 @@ interface ScheduleDao {
     /** 到期提醒需要重建闹钟，返回所有设置了提醒的条目。 */
     @Query("SELECT * FROM schedule_item WHERE remindBefore IS NOT NULL")
     suspend fun findWithReminder(): List<ScheduleItem>
+
+    // ---------------------------------------------------------------- 应用级标记
+    //
+    // 「预置示例只灌一次」这件事必须落盘。只靠 `count() == 0` 判断的话，
+    // 用户把示例数据一条条删干净、再杀掉进程重进，表又空了 —— 示例会
+    // 原样长回来，表现就是「删了重启还在」。所以单独存一行标记。
+
+    @Query("SELECT value FROM app_flag WHERE key = :key LIMIT 1")
+    suspend fun flag(key: String): String?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun setFlag(flag: AppFlag)
+
+    @Query("DELETE FROM app_flag")
+    suspend fun clearFlags()
 }

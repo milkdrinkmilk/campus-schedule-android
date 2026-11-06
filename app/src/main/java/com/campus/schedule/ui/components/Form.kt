@@ -38,6 +38,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.campus.schedule.ui.theme.LocalMetrics
+import com.campus.schedule.ui.theme.LocalPalette
 import com.campus.schedule.ui.theme.LocalReducedMotion
 import com.campus.schedule.ui.theme.Motion
 import com.campus.schedule.ui.theme.Tokens
@@ -58,6 +59,7 @@ fun FieldLabel(
     required: Boolean = false
 ) {
     val m = LocalMetrics.current
+    val p = LocalPalette.current
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
@@ -77,15 +79,15 @@ fun FieldLabel(
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(m.rpx(8)))
-                    .border(m.rpx(2), Tokens.Brand.copy(alpha = 0.28f), RoundedCornerShape(m.rpx(8)))
-                    .padding(horizontal = m.rpx(10), vertical = m.rpx(4))
+                    .border(m.rpx(2), p.brand.copy(alpha = 0.28f), RoundedCornerShape(m.rpx(8)))
+                    .padding(horizontal = m.rpx(14), vertical = m.rpx(8))
             ) {
                 Text(
                     text = "必填",
                     style = m.micro.copy(
                         fontSize = m.sp(24),
                         lineHeight = m.sp(30),
-                        color = Tokens.BrandDeep,
+                        color = p.brandDeep,
                         fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
                     ),
                     maxLines = 1
@@ -111,6 +113,7 @@ fun AppTextField(
     keyboardType: KeyboardType = KeyboardType.Text
 ) {
     val m = LocalMetrics.current
+    val p = LocalPalette.current
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val shape = RoundedCornerShape(m.radiusMd)
@@ -118,7 +121,7 @@ fun AppTextField(
     val borderColor by animateColorAsState(
         targetValue = when {
             isError -> Tokens.Danger
-            focused -> Tokens.Brand
+            focused -> p.brand
             else -> Tokens.LineStrong
         },
         animationSpec = Motion.color(LocalReducedMotion.current),
@@ -145,7 +148,7 @@ fun AppTextField(
                 .fillMaxWidth()
                 .defaultMinSize(minHeight = if (minLines > 1) m.rpx(180) else m.rpx(46)),
             textStyle = m.bodyLg.copy(color = Tokens.Ink),
-            cursorBrush = SolidColor(Tokens.Brand),
+            cursorBrush = SolidColor(p.brand),
             interactionSource = interaction,
             keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
             maxLines = if (minLines > 1) minLines else 1
@@ -205,13 +208,14 @@ fun ChoiceChip(
     accent: Color? = null
 ) {
     val m = LocalMetrics.current
+    val p = LocalPalette.current
     val reduced = LocalReducedMotion.current
     val interaction = rememberPressInteraction()
     val shape = RoundedCornerShape(m.radiusPill)
 
     val bg by animateColorAsState(
         targetValue = when {
-            selected -> accent ?: Tokens.Brand
+            selected -> accent ?: p.brand
             else -> Tokens.PaperRaised
         },
         animationSpec = Motion.color(reduced),
@@ -322,11 +326,12 @@ fun SwitchRow(
     subtitle: String? = null
 ) {
     val m = LocalMetrics.current
+    val p = LocalPalette.current
     val reduced = LocalReducedMotion.current
     val interaction = rememberPressInteraction()
 
     val trackColor by animateColorAsState(
-        targetValue = if (checked) Tokens.Brand else Tokens.PaperSunken,
+        targetValue = if (checked) p.brand else Tokens.PaperSunken,
         animationSpec = Motion.color(reduced),
         label = "switchTrack"
     )

@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.Dp
 import com.campus.schedule.core.CoreDate
 import com.campus.schedule.ui.icons.AppIcons
 import com.campus.schedule.ui.theme.LocalMetrics
+import com.campus.schedule.ui.theme.LocalPalette
 import com.campus.schedule.ui.theme.LocalReducedMotion
 import com.campus.schedule.ui.theme.Motion
 import com.campus.schedule.ui.theme.Tokens
@@ -70,6 +71,7 @@ fun WeekStrip(
     modifier: Modifier = Modifier
 ) {
     val m = LocalMetrics.current
+    val p = LocalPalette.current
     val reduced = LocalReducedMotion.current
     val isCurrentWeek = CoreDate.startOfWeek(nowMillis) == CoreDate.startOfWeek(weekStart)
 
@@ -135,7 +137,7 @@ fun WeekStrip(
                     style = m.micro.copy(
                         fontSize = m.sp(24),
                         lineHeight = m.sp(32),
-                        color = Tokens.BrandDeep,
+                        color = p.brandDeep,
                         fontWeight = FontWeight.SemiBold
                     ),
                     modifier = Modifier
@@ -169,6 +171,7 @@ private fun StripDay(
     onClick: () -> Unit
 ) {
     val m = LocalMetrics.current
+    val p = LocalPalette.current
     val reduced = LocalReducedMotion.current
     val interaction = rememberPressInteraction()
     val active = animateFloatAsState(
@@ -192,7 +195,7 @@ private fun StripDay(
             style = m.micro.copy(
                 fontSize = m.sp(24),
                 lineHeight = m.sp(30),
-                color = lerp(Tokens.InkMuted, Tokens.BrandDeep, active.value)
+                color = lerp(Tokens.InkMuted, p.brandDeep, active.value)
             ),
             maxLines = 1
         )
@@ -203,8 +206,8 @@ private fun StripDay(
                 .clip(shape)
                 .background(
                     when {
-                        selected -> Tokens.Brand
-                        today -> Tokens.BrandTint
+                        selected -> p.brand
+                        today -> p.brandTint
                         else -> Color.Transparent
                     }
                 ),
@@ -217,7 +220,7 @@ private fun StripDay(
                     lineHeight = m.sp(36),
                     color = when {
                         selected -> Tokens.PaperRaised
-                        today -> Tokens.BrandDeep
+                        today -> p.brandDeep
                         else -> Tokens.InkSecondary
                     },
                     fontWeight = if (selected || today) FontWeight.Bold else FontWeight.Normal
@@ -232,7 +235,7 @@ private fun StripDay(
                 .size(m.rpx(6))
                 .graphicsLayer { alpha = if (today && !selected) 1f else 0f }
                 .clip(CircleShape)
-                .background(Tokens.Brand)
+                .background(p.brand)
         )
     }
 }
@@ -460,6 +463,7 @@ private fun TimelineEventBlock(
     onClick: () -> Unit
 ) {
     val m = LocalMetrics.current
+    val p = LocalPalette.current
     val interaction = rememberPressInteraction()
     val accent = Tokens.accentColor(item.accent)
     val shape = RoundedCornerShape(m.radiusMd)
@@ -517,7 +521,7 @@ private fun TimelineEventBlock(
                     .padding(top = m.rpx(8), end = m.rpx(2))
                     .size(m.rpx(8))
                     .clip(CircleShape)
-                    .background(Tokens.Brand)
+                    .background(p.brand)
             )
         }
     }

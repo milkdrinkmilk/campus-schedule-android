@@ -35,20 +35,48 @@ class ScheduleRepository(private val dao: ScheduleDao) {
 
     suspend fun count(): Int = dao.count()
 
-    /** 首次启动预置示例数据（仅当库为空时）。 */
+    /**
+     * 首次启动预置示例数据。
+     *
+     * 判断条件**不是**「表里有没有数据」，而是「有没有灌过」：
+     *
+     * * 旧实现只看 `count() > 0`，用户把示例一条条删光 → 表空了 → 下次冷启动
+     *   又被当成首次启动，示例原样长回来。表现就是「删了，重启还在」。
+     * * 现在在 `app_flag` 里落一个 `seeded` 标记，灌过就不再灌。
+     *   用户在「我的」里点「清空全部数据」时，标记会一起重置（见 [clearAll]），
+     *   所以「清空」之后仍然可以重新看到示例。
+     */
     suspend fun seedIfEmpty(now: Long = System.currentTimeMillis()): Boolean {
-        if (dao.count() > 0) return false
-        dao.insertAll(SeedData.build(now))
-        return true
+        if (dao.flag(FLAG_SEEDED) != null) return false
+        val inserted = if (dao.count() == 0) {
+            dao.insertAll(SeedData.build(now))
+            true
+        } else {
+            // 老版本升级上来的用户：表里已经有数据，只是还没有标记。
+            // 补一个标记，避免他之后删光数据时示例又冒出来。
+            false
+        }
+        dao.setFlag(AppFlag(FLAG_SEEDED, "1"))
+        return inserted
     }
 
-    /** 一键清空全部数据（含示例）。 */
-    suspend fun clearAll() = dao.deleteAll()
+    /** 一键清空全部数据（含示例），并把「已灌过示例」标记复位。 */
+    suspend fun clearAll() {
+        dao.deleteAll()
+        dao.clearFlags()
+    }
 
-    /** 只清空预置示例，保留用户自己创建的日程。 */
-    suspend fun clearSamples() = dao.deleteSamples()
+    /** 只清空预置示例，保留用户自己创建的日程；标记保持，示例不会自己回来。 */
+    suspend fun clearSamples() {
+        dao.deleteSamples()
+        dao.setFlag(AppFlag(FLAG_SEEDED, "1"))
+    }
 
     suspend fun findWithReminder(): List<ScheduleItem> = dao.findWithReminder()
 
     suspend fun importAll(items: List<ScheduleItem>) = dao.insertAll(items)
+
+    private companion object {
+        const val FLAG_SEEDED = "seeded"
+    }
 }

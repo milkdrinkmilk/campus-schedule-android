@@ -512,11 +512,41 @@ WeekModeContent     课表（原 WeekGrid，保留分段映射的当前时间线
 
 ---
 
-## 十四、下一步（可选增强）
+## 十四、v2.4 每日事务与体验打磨
+
+针对「示例数据删了重启又回来 / 想要启动动画 / 三个页面容易腻 / 编辑页不该有底栏 / 底栏要滑块 / 动画太慢 / 日程页只留每日事务 / 文字贴边框」八条反馈。
+
+| 现象 | 根因 | 处理 |
+| --- | --- | --- |
+| 删光示例数据，重启后又长回来 | `seedIfEmpty()` 只判断 `dao.count() > 0`。用户逐条删完后表为空，下次冷启动被当成「首次启动」，示例原样灌回 | 新增 `app_flag` 表与 `AppFlag` 实体，`seedIfEmpty()` 改判 `FLAG_SEEDED` 标记（删过就永不再灌）。`clearAll()` 会连标记一起清掉 —— 只有「清空全部数据」才回到首次启动状态 |
+| 冷启动白屏 → 列表凭空出现 | 系统启动窗口的 `windowBackground` 是白色，与 Compose 首帧的纸色不同 | `colors.xml` 加 `paper = #FFF6F9FF`、`themes.xml` 设 `android:windowBackground`；新增 `LaunchOverlay`（短横线生长 + 标题浮起 + 副标题淡入，约 500ms）；`SceneTransition` 让主界面在覆盖层下面**先组合好**，从 0.985 缩放 / 0.92 透明度收拢到位，两个动画时间重叠 |
+| 三个页面看久了容易腻 | 全站只有一个固定品牌色 | 新增 `Palette` 与 `Palettes`：静蓝 / 石青 / 陶土 / 黛紫四套，**按 ISO 周轮换**（`EPOCH_MONDAY` 起算），`Theme.kt` 通过 `LocalPalette` 提供并做 600ms 颜色过渡；全站 `Tokens.Brand*` 调用点改为读 `p.brand*`，共 76 处 |
+| 编辑页下面压着导航栏 | 底栏为了不让 `innerPadding` 跳变而「始终渲染、只关 enabled」 | 改为 `AnimatedVisibility`：进入编辑页时底栏用 `slideOutVertically` 收起，与编辑页「从底部推入」同向，看起来像被新页面顶掉 |
+| 底栏切换没有「东西在走」 | v2.3 把指示器全删了，只靠颜色区分 | 加回一枚**浅色药丸**（`brandTint`、无描边、高 88rpx）在三个格子中间滑；位置只由 `cellWidth * index` 一个来源决定，曲线用 `Motion.tab()` 不过冲 |
+| 动画整体偏慢、不够灵动 | `DurPage 320 / DurBase 300 / DurExit 240 / StaggerStep 90` | 全面压缩：`DurPress 140`、`DurFast 170`、`DurBase 210`、`DurExit 170`、`DurPage 230`、`DurOverlay 200`、`StaggerStep 42`。曲线未改，仍然只动 `graphicsLayer` |
+| 日程页要「只留每日事务、按时间排」 | 时间轴视图把一天拆成刻度格，信息密度低 | 删除 `HorizontalPager` 时间轴（连同 `TodayTimeline` / `entriesAreForSelected` / pager 双向同步逻辑），改成**单日清单**：`TimelineRow` 一行一条（时间槽 + 标题/状态 + 星标），按开始时间升序、已结束的沉底；换日改用左右箭头 + `AnimatedContent` 纵向推入 |
+| 部分文字贴着边框 | `Tag` 上下 6rpx、`EntryRow` 左右 4rpx、`StatsRow` 左右 8rpx、`FieldLabel` 必填标注 10/4rpx、课块内边距 8/4rpx | 统一放宽：`Tag` 16/10、`EntryRow` 20/14、`StatsRow` 20/26、必填标注 14/8、课块 16/12/10/8、`TimelineRow` 22/18 |
+
+### 代码侧改动
+
+- `data/AppFlag.kt`（新增）、`AppDatabase.kt`（version 2、加实体）、`ScheduleDao.kt`（`flag` / `setFlag` / `clearFlags`）、`ScheduleRepository.kt`（`seedIfEmpty` 改按标记判断）。
+- `ui/theme/Tokens.kt`（`Palette` / `Palettes` / `brandGradient`）、`Theme.kt`（`LocalPalette` + 600ms 颜色过渡）。
+- `ui/components/LaunchOverlay.kt`（新增）、`SceneTransition.kt`（新增）。
+- `ui/components/Timeline.kt`（`TimelineRow` 重写为单行条目）、`ui/screens/ScheduleScreen.kt`（`TimelineModeContent` 重写为单日清单）。
+- `ui/theme/Motion.kt`（时长整体压缩）、`MainActivity.kt`（底栏药丸滑块 + 编辑页隐藏底栏 + 启动层）。
+- `app/build.gradle.kts`：`versionCode 9` / `versionName 2.4.0`。
+
+### 回归
+
+- `gradle assembleDebug testDebugUnitTest`：BUILD SUCCESSFUL。
+- 单测：`CoreDateTest` 13 / `CoreConflictTest` 7 / `CoreValidatorsTest` 11 / `UiRegressionGuardTest` 4，共 35 个，0 失败。
+
+---
+
+## 十五、下一步（可选增强）
 
 - 重复日程规则（每周 / 每月 / 工作日）
 - 首页小组件（今日日程）
-- 日历月视图
 - ics 导入导出（对接系统日历）
 - 深色主题
 - 桌面快捷方式快速记录

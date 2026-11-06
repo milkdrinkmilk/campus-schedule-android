@@ -43,6 +43,7 @@ import com.campus.schedule.ui.components.rememberPressInteraction
 import com.campus.schedule.ui.components.rippleClick
 import com.campus.schedule.ui.components.staggerEnter
 import com.campus.schedule.ui.theme.LocalMetrics
+import com.campus.schedule.ui.theme.LocalPalette
 import com.campus.schedule.ui.theme.Motion
 import com.campus.schedule.ui.theme.Tokens
 import kotlin.math.max
@@ -224,13 +225,14 @@ private fun OverviewHero(
     modifier: Modifier = Modifier
 ) {
     val m = LocalMetrics.current
+    val p = LocalPalette.current
     val shape = RoundedCornerShape(m.radiusLg)
 
     Column(
         modifier = modifier
             .fillMaxWidth()
             .clip(shape)
-            .background(Tokens.BrandGradient)
+            .background(p.brandGradient)
             .drawBehind {
                 // 右上角三道斜线：纯线条装饰，交代「日程表」的意象
                 val stroke = m.rpx(2).toPx()
@@ -326,6 +328,7 @@ private fun WeekChart(
     modifier: Modifier = Modifier
 ) {
     val m = LocalMetrics.current
+    val p = LocalPalette.current
     val maxCount = max(1, counts.maxOrNull() ?: 1)
 
     RaisedCard(
@@ -352,7 +355,7 @@ private fun WeekChart(
                         style = m.micro.copy(
                             fontSize = m.sp(24),
                             lineHeight = m.sp(34),
-                            color = if (isToday) Tokens.BrandDeep else Tokens.InkMuted,
+                            color = if (isToday) p.brandDeep else Tokens.InkMuted,
                             fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
                         )
                     )
@@ -375,9 +378,9 @@ private fun WeekChart(
                             // 两级对比清楚；之前非今天的柱子用 PaperTint，
                             // 和轨道底色 PaperSunken 几乎同色，整张图看起来是平的。
                             val barBrush: Brush = if (isToday) {
-                                Tokens.BrandGradient
+                                p.brandGradient
                             } else {
-                                SolidColor(Tokens.Brand.copy(alpha = 0.32f))
+                                SolidColor(p.brand.copy(alpha = 0.32f))
                             }
                             Box(
                                 modifier = Modifier
@@ -394,7 +397,7 @@ private fun WeekChart(
                         style = m.micro.copy(
                             fontSize = m.sp(24),
                             lineHeight = m.sp(34),
-                            color = if (isToday) Tokens.BrandDeep else Tokens.InkMuted
+                            color = if (isToday) p.brandDeep else Tokens.InkMuted
                         )
                     )
                 }

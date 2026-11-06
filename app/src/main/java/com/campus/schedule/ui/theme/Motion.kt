@@ -22,15 +22,15 @@ import androidx.compose.animation.core.tween
 object Motion {
 
     // ---- 时长（ms），与 --dur-* 一致 ----
-    const val DurPress = 220
-    const val DurFast = 260
-    const val DurBase = 300
-    const val DurSheet = 300
-    const val DurExit = 240
-    const val DurToastEnter = 280
-    const val DurToastExit = 240
-    const val DurTab = 260
-    const val DurWake = 260
+    const val DurPress = 140
+    const val DurFast = 170
+    const val DurBase = 210
+    const val DurSheet = 210
+    const val DurExit = 170
+    const val DurToastEnter = 190
+    const val DurToastExit = 160
+    const val DurTab = 210
+    const val DurWake = 180
 
     /**
      * 页面级横向转场（v2.1）。
@@ -38,16 +38,16 @@ object Motion {
      * 比 [DurTab] 长一点：三个 Tab 之间做的是「同层横移 + 交叉淡入」，
      * 位移幅度大（整屏的 1/8），太快会显得硬。
      */
-    const val DurPage = 320
+    const val DurPage = 230
 
     /** 覆盖层（提示框 / 弹层）进出场。 */
-    const val DurOverlay = 280
+    const val DurOverlay = 200
 
     /** 错位入场步进（ms）。 */
-    const val StaggerStep = 90
+    const val StaggerStep = 42
 
     /** 参与错位入场的最大条目数，超出后不再累加延迟。 */
-    const val StaggerMax = 8
+    const val StaggerMax = 7
 
     // ---- 曲线 ----
     /** 带回弹的入场曲线（cubic-bezier(0.34, 1.56, 0.64, 1)）。 */
@@ -74,7 +74,7 @@ object Motion {
      * 按压（v2.1：不再缩放，只做颜色/透明度过渡，所以用柔和曲线而不是回弹）。
      */
     fun press(reduced: Boolean): FiniteAnimationSpec<Float> =
-        if (reduced) tween(0) else tween(160, easing = EaseSoft)
+        if (reduced) tween(0) else tween(DurPress, easing = EaseSoft)
 
     /** 颜色 / 透明度过渡（260ms，柔和）。 */
     fun fast(reduced: Boolean): FiniteAnimationSpec<Float> =

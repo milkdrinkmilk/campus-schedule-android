@@ -40,20 +40,30 @@ data class ScheduleUiState(
     val conflictExpanded: Boolean = false,
     val loaded: Boolean = false
 ) {
-    /** 当前视图下应展示的条目（已按筛选条件过滤）。 */
+    /** 当前视图下应展示的条目（已按筛选条件过滤，且按开始时间升序）。 */
     val visibleItems: List<ScheduleItem>
         get() {
             val base = when (mode) {
+                // v2.4：每日事务改成「按时间排序的清单」，顺序在这里定死，
+                // UI 层不再自己排 —— 免得两个地方各排一次还排得不一样。
                 ScheduleMode.TIMELINE -> items.filter { CoreDate.isSameDay(it.startTime, selectedDate) }
                 ScheduleMode.WEEK -> items.filter {
                     it.startTime in weekStart..(weekStart + 7 * CoreDate.DAY - 1)
                 }
             }
-            return when (filter) {
+            val filtered = when (filter) {
                 ScheduleFilter.ALL -> base
                 ScheduleFilter.TODAY -> base.filter { CoreDate.isToday(it.startTime, System.currentTimeMillis()) }
                 ScheduleFilter.STARRED -> base.filter { it.starred }
             }
+            // 已结束的一律沉到最后：当天清单里「接下来要做的」永远在上面。
+            // 用 (是否已结束, 开始时间) 做二级排序，结束状态按读取时刻算，
+            // 所以条目过了结束时间会自己往下沉一位，不需要额外刷新。
+            val now = System.currentTimeMillis()
+            return filtered.sortedWith(
+                compareBy<ScheduleItem> { if (it.endTime >= now) 0 else 1 }
+                    .thenBy { it.startTime }
+            )
         }
 
     /** 今天的条目数。 */

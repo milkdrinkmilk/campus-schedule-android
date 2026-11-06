@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import com.campus.schedule.core.CoreDate
 import com.campus.schedule.data.ScheduleItem
 import com.campus.schedule.ui.theme.LocalMetrics
+import com.campus.schedule.ui.theme.LocalPalette
 import com.campus.schedule.ui.theme.LocalReducedMotion
 import com.campus.schedule.ui.theme.Motion
 import com.campus.schedule.ui.theme.Tokens
@@ -252,6 +253,7 @@ private fun DayHeader(
     onClick: () -> Unit
 ) {
     val m = LocalMetrics.current
+    val p = LocalPalette.current
     val interaction = rememberPressInteraction()
     val shape = RoundedCornerShape(m.radiusSm)
 
@@ -262,7 +264,7 @@ private fun DayHeader(
             .width(m.rpx(148))
             .height(m.rpx(88))
             .clip(shape)
-            .then(if (isSelected) Modifier.background(Tokens.BrandGradient) else Modifier)
+            .then(if (isSelected) Modifier.background(p.brandGradient) else Modifier)
             .pressHighlight(interaction, shape)
             .rippleClick(interaction, onClick = onClick),
         contentAlignment = Alignment.Center
@@ -281,7 +283,7 @@ private fun DayHeader(
                     lineHeight = m.sp(32),
                     color = when {
                         isSelected -> Tokens.PaperRaised
-                        isToday -> Tokens.BrandDeep
+                        isToday -> p.brandDeep
                         else -> Tokens.InkMuted
                     }
                 ),
@@ -294,7 +296,7 @@ private fun DayHeader(
                     lineHeight = m.sp(34),
                     color = when {
                         isSelected -> Tokens.PaperRaised
-                        isToday -> Tokens.BrandDeep
+                        isToday -> p.brandDeep
                         else -> Tokens.InkSecondary
                     },
                     fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
@@ -310,7 +312,7 @@ private fun DayHeader(
                     .padding(start = m.rpx(56), top = m.rpx(26))
                     .size(m.rpx(8))
                     .clip(CircleShape)
-                    .background(Tokens.Brand)
+                    .background(p.brand)
             )
         }
     }
@@ -366,6 +368,7 @@ private fun WeekBlockView(
     onClick: () -> Unit
 ) {
     val m = LocalMetrics.current
+    val p = LocalPalette.current
     val interaction = rememberPressInteraction()
     val shape = RoundedCornerShape(m.radiusSm)
     val accent = Tokens.accentColor(block.item.accent)
@@ -381,10 +384,10 @@ private fun WeekBlockView(
             .offset(y = top)
             .height(height)
             .clip(shape)
-            .background(if (ongoing) Tokens.BrandTint else accent.copy(alpha = 0.06f))
+            .background(if (ongoing) p.brandTint else accent.copy(alpha = 0.06f))
             .border(
                 width = m.rpx(2),
-                color = if (ongoing) Tokens.Brand.copy(alpha = 0.45f) else accent.copy(alpha = 0.30f),
+                color = if (ongoing) p.brand.copy(alpha = 0.45f) else accent.copy(alpha = 0.30f),
                 shape = shape
             )
             .drawBehind {
@@ -399,7 +402,7 @@ private fun WeekBlockView(
             .rippleClick(interaction, onClick = onClick)
             // 左边距 14rpx 是留给那条 6rpx 竖条的呼吸空间，
             // 时间与标题从同一条竖线起笔，行高 32 + 8 = 40，与「一个 40rpx 小色块」的密度一致
-            .padding(start = m.rpx(14), end = m.rpx(8), top = m.rpx(6), bottom = m.rpx(4))
+            .padding(start = m.rpx(16), end = m.rpx(12), top = m.rpx(10), bottom = m.rpx(8))
     ) {
         Text(
             text = block.timeText,
@@ -429,7 +432,7 @@ private fun WeekBlockView(
                     .padding(top = m.rpx(10), end = m.rpx(6))
                     .size(m.rpx(8))
                     .clip(CircleShape)
-                    .background(Tokens.Brand)
+                    .background(p.brand)
             )
         }
     }

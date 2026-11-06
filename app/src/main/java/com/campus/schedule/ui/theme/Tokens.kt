@@ -138,6 +138,97 @@ object Tokens {
     fun accentByIndex(index: Int): String = accentPalette[((index % accentPalette.size) + accentPalette.size) % accentPalette.size]
 }
 
+/**
+ * 会轮换的配色（v2.4 新增）。
+ *
+ * ## 为什么需要它
+ *
+ * 上一版的界面所有页面共用一套蓝，用了几天就会觉得「腻」—— 不是因为配色
+ * 难看，而是因为**每天看到的东西一模一样**。换一套配色又会让老用户找不到
+ * 自己熟悉的位置，所以这里的做法是：**主色按周轮换**，布局、字号、线条粗细
+ * 一个字都不动。视觉记忆里的「形状」全保留，只有「色相」在换。
+ *
+ * ## 轮换规则
+ *
+ * 以 2026-01-05（周一）为第 0 周，每周换一个色板，四套循环。四套都在同一个
+ * 明度/饱和度区间内，保证换成哪一套，正文对比度都不会掉下去。
+ */
+data class Palette(
+    /** 主色：指示器、选中态、时间轴当前时刻的强调色。 */
+    val brand: Color,
+    /** 主色在深色文字上的可用版本（对白底可读）。 */
+    val brandDeep: Color,
+    /** 主色的浅底（选中项背景、标签底）。 */
+    val brandTint: Color,
+    /** 主色的较浅过渡色，用于渐变。 */
+    val brandStrong: Color
+) {
+    /** 主色渐变：只由本套色板推导，换色时自动跟着换。 */
+    val brandGradient: Brush
+        get() = Brush.linearGradient(
+            colors = listOf(brand, brandStrong, brandDeep),
+            start = androidx.compose.ui.geometry.Offset.Zero,
+            end = androidx.compose.ui.geometry.Offset.Infinite
+        )
+}
+
+object Palettes {
+
+    /** 每周轮换的四套色板，顺序即轮换顺序。 */
+    val all: List<Palette> = listOf(
+        // 1. 静蓝（沿用上一版的品牌色，作为默认）
+        Palette(
+            brand = Color(0xFF2F6FED),
+            brandStrong = Color(0xFF2563EB),
+            brandDeep = Color(0xFF1E56C7),
+            brandTint = Color(0xFFEAF2FF)
+        ),
+        // 2. 石青 —— 比蓝色冷一点、灰一点，配纸色更安静
+        Palette(
+            brand = Color(0xFF2C7F7B),
+            brandStrong = Color(0xFF23706C),
+            brandDeep = Color(0xFF1A5C59),
+            brandTint = Color(0xFFE6F3F2)
+        ),
+        // 3. 陶土 —— 唯一偏暖的一套，适合秋冬
+        Palette(
+            brand = Color(0xFFB4553A),
+            brandStrong = Color(0xFFA04A32),
+            brandDeep = Color(0xFF853C29),
+            brandTint = Color(0xFFFBEDE8)
+        ),
+        // 4. 黛紫 —— 明度压得最低，夜里看着最不刺眼
+        Palette(
+            brand = Color(0xFF5B4A9E),
+            brandStrong = Color(0xFF4E3F8A),
+            brandDeep = Color(0xFF403374),
+            brandTint = Color(0xFFEFECF8)
+        )
+    )
+
+    /** 第 0 周的周一：用来把「现在」换算成周序号。固定值，不随用户时区漂移。 */
+    private const val EPOCH_MONDAY = 1767571200000L // 2026-01-05 00:00:00 +08:00
+
+    private const val WEEK_MS = 7L * 24 * 60 * 60 * 1000
+
+    /** 给定时间落在第几周（从 0 开始，负数向 0 取整）。 */
+    fun weekIndexOf(nowMillis: Long): Long {
+        val diff = nowMillis - EPOCH_MONDAY
+        val weeks = if (diff >= 0) diff / WEEK_MS else (diff - WEEK_MS + 1) / WEEK_MS
+        return weeks
+    }
+
+    /** 取当周色板。 */
+    fun of(nowMillis: Long): Palette {
+        val index = ((weekIndexOf(nowMillis) % all.size) + all.size) % all.size
+        return all[index.toInt()]
+    }
+
+    /** 取指定色板；[fixed] 非空时锁定该套（调试或用户手动选择用）。 */
+    fun resolve(nowMillis: Long, fixed: Int?): Palette =
+        if (fixed == null) of(nowMillis) else all[((fixed % all.size) + all.size) % all.size]
+}
+
 // ---------------------------------------------------------------------------
 // 尺寸与排版
 // ---------------------------------------------------------------------------
